@@ -105,7 +105,7 @@
         "cpcommonize.ss" "cpletrec.ss" "inspect.ss"
         "enum.ss" "io.ss" "read.ss" "primvars.ss" "syntax.ss" "costctr.ss" "expeditor.ss"
         "exceptions.ss" "pretty.ss" "env.ss"
-        "fasl.ss" "vfasl.ss" "pbchunk.ss" "reloc.ss" "pdhtml.ss" "strip.ss" "ftype.ss" "back.ss"))
+        "fasl.ss" "vfasl.ss" "pbchunk.ss" "wasm-pbchunk.ss" "reloc.ss" "pdhtml.ss" "strip.ss" "ftype.ss" "back.ss"))
 
 ;; Note: `raco cross` looks for this definition:
 (define macro-src-names

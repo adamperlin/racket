@@ -934,6 +934,36 @@
                              (lambda (script-header mode entry* op)
                                (when script-header (put-bytevector op script-header))
                                (for-each (lambda (entry) (write-entry op entry)) entry*)))))
+      
+      (set-who! wasm-pbchunk-convert-file
+        (lambda (ifn ofn c-ofns reg-proc-names start-index only-funcs)
+          (display (format "wasm-pbchunk-convert-file\n"))
+          (unless (string? ifn) ($oops who "~s is not a string" ifn))
+          (unless (string? ofn) ($oops who "~s is not a string" ofn))
+          (unless (and (pair? c-ofns) (list? c-ofns) (andmap string? c-ofns))
+            ($oops who "~s is not a nonempty list of strings" c-ofns))
+          (unless (and (pair? reg-proc-names) (list? reg-proc-names) (andmap string? reg-proc-names))
+            ($oops who "~s is not a nonempty list of strings" reg-proc-names))
+          (unless (and (fixnum? start-index) (fx>= start-index 0))
+            ($oops who "~s is not a nonnegative fixnum" start-index))
+          (unless (fx= (length c-ofns) (length reg-proc-names))
+            ($oops who "length of file-name list ~s does not match the length of function-name list ~s"
+                   c-ofns
+                   reg-proc-names))
+          (convert-fasl-file who ifn ofn (fasl-strip-options)
+                             (lambda (script-header mode entry* op)
+                               ($fasl-wasm-pbchunk!
+                                who
+                                c-ofns
+                                reg-proc-names
+                                only-funcs
+                                start-index
+                                entry*
+                                handle-entry
+                                (lambda ()
+                                  (when script-header (put-bytevector op script-header))
+                                  (for-each (lambda (entry) (write-entry op entry)) entry*)))))))
+
       (set-who! pbchunk-convert-file
         (lambda (ifn ofn c-ofns reg-proc-names start-index)
           (unless (string? ifn) ($oops who "~s is not a string" ifn))
