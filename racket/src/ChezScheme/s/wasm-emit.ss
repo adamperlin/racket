@@ -74,7 +74,7 @@
               `(forms ...))
             local-gen #f)]))
 
-  (define (do-pb-mov16-pb-zero-bits-pb-shift dest imm-unsigned shift ms)
+  (define (emit-pb-mov16-pb-zero-bits-pb-shift dest imm-unsigned shift ms)
     (wasm-emit
       ,(generate-regs-lhs dest ms 8 '$_0)
       (local.get $_0)
@@ -86,7 +86,7 @@
           (i64.extend_i32_u)
           (i64.store)))
 
-  (define (do-pb-mov16-pb-keep-bits-pb-shift dest imm-unsigned shift ms)
+  (define (emit-pb-mov16-pb-keep-bits-pb-shift dest imm-unsigned shift ms)
     (wasm-emit
       ,(generate-regs-lhs dest ms 8 '$_0)
       ,(case shift
@@ -107,7 +107,7 @@
 
       (i64.store)))
     
-    (define (do-pb-mov-pb-i-i dest reg ms)
+    (define (emit-pb-mov-pb-i-i dest reg ms)
       (wasm-emit
         (local $_0 i32)
         (local $_1 i32)
@@ -413,15 +413,15 @@
           (i64.const 0)
           (i64.eq))])))
 
-  (define (do-pb-cmp-op-pb-no-signal-pb-register reg1 reg2 ms cmp-op flag)
+  (define (emit-pb-cmp-op-pb-register reg1 reg2 ms cmp-op flag)
     (wasm-emit
       ,(load-from-reg reg1 ms '$_0)
-      ,(load-from-reg reg2 '$_1)
+      ,(load-from-reg reg2 ms '$_1)
       ,(do-pb-cmp-op-no-signal cmp-op '$_0 '$_1)
 
       (local.set ,flag)))
     
-  (define (do-pb-cmp-op-pb-no-signal-pb-immediate reg imm ms cmp-op flag)
+  (define (emit-pb-cmp-op-pb-immediate reg imm ms cmp-op flag)
     (wasm-emit
       ,(load-from-reg reg ms '$_0)
 
@@ -432,7 +432,133 @@
       ,(do-pb-cmp-op-no-signal cmp-op '$_0 '$_1)
 
       (local.set ,flag)))
+  
+  (define (emit-pb-literal dest ms word-size literal-offset)
+    (define val-type 
+      (case word-size 
+        [(4) 'i32]
+        [(8) 'i64]
+        [else ($oops 'wasm-emit "unsupported word size ~a" word-size)]))
+    (define load-op (string->symbol (format "~a.load" val-type)))
+    (define store-op (string->symbol (format "~a.store" val-type)))
+    (wasm-emit
+      (local $_0 i32)
+      (local $_1 i64)
+      ,(generate-regs-lhs dest ms word-size '$_0)
 
+      (local.get $ip)
+      (i32.const ,literal-offset)
+      (i32.add)
+
+      (,load-op)
+
+      (local.set $_1)
+
+      (local.get $_0)
+      (local.get $_1)
+      (,store-op)))
+  
+  (define (pb-load-type->wasm-load-type src-type dest-type)
+    (case src-type
+      [(int8) 'load8_s]
+      [(uint8) 'load8_u]
+      [(int16) 'load16_s]
+      [(uint16) 'load16_u]
+      [(int32) (if (equal? dest-type 'i32) 'load_s 'load32_s)]
+      [(uint32) (if (equal? dest-type 'i32) 'load_u 'load32_u)]
+      [(int64) 
+        (begin
+          (unless (equal? dest-type 'i64)
+            ($oops 'wasm-emit "incompatible load type ~a for ~a" src-type dest-type))
+          'load)]
+      [(single) 'load] 
+      [(double) 
+        (begin
+          (unless (equal? dest-type 'f64)
+            ($oops 'wasm-emit "incompatible load type ~a for ~a" src-type dest-type))
+          'load)]))
+
+   (define (word-size->val-type word-size)
+    (case word-size
+      [(4) 'i32] 
+      [(8) 'i64]
+      [else ($oops 'wasm-emit "unsupported word size ~a" word-size)]))
+
+   (define (word-size->dest-type word-size fp)
+    (if fp
+      (case word-size
+        [(4) 'f32] 
+        [(8) 'f64]) 
+      (case word-size
+        [(4) 'i32] 
+        [(8) 'i64])))
+  
+  (define (is-fp? src-type)
+    (or (equal? src-type 'single) (equal? src-type 'double)))
+    
+  (define (emit-pb-ld-pb-immediate dest base imm ms src-type word-size)
+    (define dest-type (word-size->dest-type word-size (is-fp? src-type)))
+    (define load-type (pb-load-type->wasm-load-type src-type dest-type))
+    (define load-op
+      (string->symbol (format "~a.~a"  dest-type load-type)))
+    (define store-op (string->symbol (format "~a.store" dest-type)))
+
+    (wasm-emit
+      (local $_0 i32)
+      (local $_1 i32)
+      ,(if (or (equal? dest-type 'single) (equal? dest-type 'double))
+         (generate-fpregs-lhs dest ms word-size '$_0)
+         (generate-regs-lhs dest ms word-size '$_0))
+      ,(load-from-reg base ms '$_1)
+
+      (local.get $_1)
+      (i32.const ,imm)
+      (,load-op)
+      (local.set $_2)
+
+      (local.get $_0)
+      (local.get $_2)
+
+      (,store-op)))
+  
+  (define (emit-pb-b*-pb-immediate base target-offset ms)
+    (wasm-emit
+      (local $_0 i32)
+      ,(load-from-reg base ms '$_0)
+      (i32.const ,target-offset)
+      (i32.add)
+      (return)))
+  
+  (define (emit-pb-b-pb-immediate target-offset next-instr ms test)
+    (wasm-emit
+      ,(if (null? test) '(i32.const 1) test)
+      (if 
+          (block
+            (local.get $ip)
+            (i32.const ,target-offset)
+            (i32.add)
+            (return))
+          (return (i32.add 
+                    (local.get $ip) 
+                    (i32.const ,next-instr))))))
+  
+  (define (emit-pb-b-pb-register reg next-instr ms test)
+    (wasm-emit
+      ,(if (null? test) '(i32.const 1) test)
+      (if 
+        (block 
+          (local $_0 i32) 
+          ,(load-from-reg reg ms '$_0)
+          (return))
+        (return (i32.add (local.get $ip) 
+                        (i32.const next-instr))))))
+  
+  (define (format-with-newlines wasm-sexp)
+    (fold-left 
+      string-append
+      ""
+      (map (lambda (x) (format "\t~a\n" x)) wasm-sexp)))
+  
   ;; TODO: fp bin ops and fp cmp ops
 
   ; (define (first-index-of s c)

@@ -100,9 +100,6 @@
                   (delete-file c-ofn #f)
                   (on-reset
                    (close-port c-op)
-                   (fprintf c-op "#include \"system.h\"\n")
-                   (fprintf c-op "#include <math.h>\n")
-                   (fprintf c-op "#include \"pb.h\"\n")
                    (p-loop (cdr todo-c-ofns) (cons c-op rev-c-ops)))))]
               [else (k (reverse rev-c-ops))])))
         ;; helper to write out chunk registration:
@@ -143,7 +140,7 @@
                      [(or (eof-object? line)
                           (and (fxzero? fuel)
                                (chunk-start-line? line)))
-                      (write-registration c-op (car reg-proc-names) index (fx+ index n))
+                      ;(write-registration c-op (car reg-proc-names) index (fx+ index n))
                       (close-port c-op)
                       (c-loop (cdr c-ops)
                               (cdr reg-proc-names)
@@ -297,14 +294,14 @@
         ;; except for the `pb-chunk` instruction
         [pb-nop nop]
         [pb-literal literal]
-        [pb-mov16-pb-zero-bits-pb-shift0 di/u mov16 z shift0]
-        [pb-mov16-pb-zero-bits-pb-shift1 di/u mov16 z shift1]
-        [pb-mov16-pb-zero-bits-pb-shift2 di/u mov16 z shift2]
-        [pb-mov16-pb-zero-bits-pb-shift3 di/u mov16 z shift3]
-        [pb-mov16-pb-keep-bits-pb-shift0 di/u mov16 k shift0]
-        [pb-mov16-pb-keep-bits-pb-shift1 di/u mov16 k shift1]
-        [pb-mov16-pb-keep-bits-pb-shift2 di/u mov16 k shift2]
-        [pb-mov16-pb-keep-bits-pb-shift3 di/u mov16 k shift3]
+        [pb-mov16-pb-zero-bits-pb-shift0 di/u mov16/z shift0]
+        [pb-mov16-pb-zero-bits-pb-shift1 di/u mov16/z shift1]
+        [pb-mov16-pb-zero-bits-pb-shift2 di/u mov16/z shift2]
+        [pb-mov16-pb-zero-bits-pb-shift3 di/u mov16/z shift3]
+        [pb-mov16-pb-keep-bits-pb-shift0 di/u mov16/k shift0]
+        [pb-mov16-pb-keep-bits-pb-shift1 di/u mov16/k shift1]
+        [pb-mov16-pb-keep-bits-pb-shift2 di/u mov16/k shift2]
+        [pb-mov16-pb-keep-bits-pb-shift3 di/u mov16/k shift3]
         [pb-mov-pb-i->i dr mov i->i]
         [pb-mov-pb-d->d dr mov d->d]
         [pb-mov-pb-i->d dr mov i->d]
@@ -412,12 +409,12 @@
         [pb-st-op-pb-double-pb-immediate dri st double]
         [pb-st-op-pb-single-pb-register drr st single]
         [pb-st-op-pb-single-pb-immediate dri st single]
-        [pb-b-op-pb-fals-pb-register r/b "if (!flag) "]
-        [pb-b-op-pb-fals-pb-immediate i/b "if (!flag) "]
-        [pb-b-op-pb-true-pb-register r/b  "if (flag) "]
-        [pb-b-op-pb-true-pb-immediate i/b "if (flag) "]
-        [pb-b-op-pb-always-pb-register r/b ""]
-        [pb-b-op-pb-always-pb-immediate i/b ""]
+        [pb-b-op-pb-fals-pb-register r/b '(i32.eq (local.get $flag) (i32.const 0))]
+        [pb-b-op-pb-fals-pb-immediate i/b '(i32.eq (local.get $flag) (i32.const 0))]
+        [pb-b-op-pb-true-pb-register r/b '(local.get $flag)]
+        [pb-b-op-pb-true-pb-immediate i/b '(local.get $flag)]
+        [pb-b-op-pb-always-pb-register r/b '()]
+        [pb-b-op-pb-always-pb-immediate i/b '()]
         [pb-b*-op-pb-register dr/b]
         [pb-b*-op-pb-immediate di/b]
         [pb-return n/x]
@@ -512,7 +509,7 @@
         [name (extract-name name)])
     
     
-    (fprintf o "\n/* code ~a */\n" name)
+    (fprintf o "\n;; code ~a \n" name)
     (unless (or (equal? name "winder-dummy") (and (pair? only-funcs) (not (member name only-funcs)))) ; hack to avoid special rp header in dounderflow
       (display (format "name: ~a\n" name))
       (let ([chunklets
@@ -530,12 +527,12 @@
                       (display (format "instruction range for chunk: ~a ~a\n" start-i end-i))
                       (when (fx= i end-i)
                         ($oops 'chunk-code "failed to make progress at ~a out of ~a" i len))
-                      (let ([continue-only?
+                      (let ([continue-only? #f])
                              ;; when the chunk would be too small to save us any time, so don't
                              ;; bother make it stand-alone; a threshold greater than 1 also avoids
                              ;; code that wouldn't even use `ms` or `ip`:
-                             (fx< (fx- end-i start-i)
-                                  (fx* min-chunk-len instr-bytes))])
+                            ;  (fx< (fx- end-i start-i)
+                            ;       (fx* min-chunk-len instr-bytes))])
                         (cons (make-chunklet i start-i end-i uses-flag? continue-only? relocs headers labels)
                               (loop end-i
                                     (advance-relocs relocs end-i)
@@ -579,10 +576,10 @@
                   (chunk-info-counter-set! ci index)]
                  [else
                   (let ([c (car chunklets)])
-                    (display (format "chunklet: ~a\n" c))
+                    (display (format "chunklet: ~a; empty-chunklet? ~a\n" c (empty-chunklet? c)))
                     ;; generate a non-empty chunk as its own function
                     (unless (empty-chunklet? c)
-                      (emit-chunk-header o index #f (chunklet-uses-flag? c)))
+                      (emit-wasm-chunk-header o index #f (chunklet-uses-flag? c)))
                     (emit-chunklet o bv
                                    (chunklet-i c) (chunklet-start-i c)
                                    (chunklet-relocs c) (chunklet-headers c) (chunklet-labels c)
@@ -594,14 +591,14 @@
                                    ;; fallthrough?
                                    (empty-chunklet? c))
                     (unless (empty-chunklet? c)
-                      (emit-chunk-footer o)
+                      (emit-wasm-chunk-footer o)
                       (bytevector-u32-set! bv (chunklet-start-i c) (make-chunk-instr index 0) (constant fasl-endianness)))
                     (loop (cdr chunklets) (if (empty-chunklet? c) index (fx+ index 1))))]))]
             [else
               (display (format "here; else case\n"))
              ;; one chunk for the whole code object, where multiple entry points are
              ;; supported by a sub-index
-             (emit-chunk-header o index #t (ormap chunklet-uses-flag? chunklets))
+             (emit-wasm-chunk-header o index #t (ormap chunklet-uses-flag? chunklets))
              (chunk-info-counter-set! ci (fx+ 1 index))
              ;; dispatch to label on entry via sub-index
              (fprintf o "  switch (sub_index) {\n")
@@ -641,7 +638,7 @@
                      (unless (empty-chunklet? c)
                        (bytevector-u32-set! bv (chunklet-start-i c) (make-chunk-instr index sub-index) (constant fasl-endianness)))
                      (loop (cdr chunklets) (if (empty-chunklet? c) sub-index (fx+ 1 sub-index)))))))
-             (emit-chunk-footer o)]))))))
+             (emit-wasm-chunk-footer o)]))))))
 
 ;; Find all branch targets in the code object
 (define (gather-targets bv len)
@@ -819,27 +816,40 @@
              [_ #'(skip)]))
          (instruction-cases instr dispatch))])))
 
-(define (emit-wasm-chunk o index uses-flag?)
-  ; sub-index is currently unsupported
-  `(func ,(string->symbol (format "$chunk_~a" index))
-    (param $ms i32)
-    (param $ip i64)
-    (result i32)
-    ,(if uses-flag?
-      '(local $flag i32)
-      '())
-    ; ... code
-  ))
+; (define (emit-wasm-chunk o index uses-flag?)
+;   ; sub-index is currently unsupported
+;   `(func ,(string->symbol (format "$chunk_~a" index))
+;     (param $ms i32)
+;     (param $ip i64)
+;     (result i32)
+;     ,(if uses-flag?
+;       '(local $flag i32)
+;       '())
+;     ; ... code
+;   ))
 
-(define (emit-chunk-header o index sub-index? uses-flag?)
-  (fprintf o "static uptr chunk_~a(MACHINE_STATE ms, uptr ip~a) {\n"
-           index
-           (if sub-index? ", int sub_index" " UNUSED_SUB_INDEX"))
-  (when uses-flag?
-    (fprintf o "  int flag;\n")))
+(define (emit-wasm-chunk-header o index sub-index? uses-flag?)
+  (fprintf o 
+    "(func $chunk_~a
+        (param $ms i32)
+        (param $ip i64)
+        (result i32)
+        ~a"
+        index 
+        (if uses-flag? "(local $flag i32)" "")))
+  
+(define (emit-wasm-chunk-footer o)
+  (fprintf o ")\n"))
 
-(define (emit-chunk-footer o)
-  (fprintf o "}\n"))
+; (define (emit-chunk-header o index sub-index? uses-flag?)
+;   (fprintf o "static uptr chunk_~a(MACHINE_STATE ms, uptr ip~a) {\n"
+;            index
+;            (if sub-index? ", int sub_index" " UNUSED_SUB_INDEX"))
+;   (when uses-flag?
+;     (fprintf o "  int flag;\n")))
+
+; (define (emit-chunk-footer o)
+;   (fprintf o "}\n"))
 
 
 ;; just show decoded instructions from `i` until `start-i`, then
@@ -868,7 +878,7 @@
                     labels)))])]
       [(fx= i end-i)
        (unless fallthrough?
-         (fprintf o "  return ip+code_rel(0x~x, 0x~x);\n" base-i i))]
+          (fprintf o "(return next-address)"))]
       [(and (pair? labels)
             (fx= i (label-to (car labels))))
        (when (fx>= i start-i)
@@ -879,7 +889,8 @@
       [else
        (let ([instr (bytevector-s32-ref bv i (constant fasl-endianness))]
              [uinstr (bytevector-u32-ref bv i (constant fasl-endianness))])
-         
+
+       
          (define (unimplemented instr) 
           ($oops 'emit-chunk "instruction opcode ~a is unimplemented" instr))
 
@@ -901,7 +912,7 @@
 
          (define (emit-return)
            (fprintf o "~areturn ip+code_rel(0x~x, 0x~x);~a" (pre) base-i i (post)))
-
+          
          (define (r-form _op)
            (emit-do _op (instr-dr-reg instr))
            (fprintf o "\n")
@@ -912,37 +923,34 @@
            (fprintf o "\n")
            (next))
 
-         (define (dr-form _op)
-           (emit-do _op (instr-dr-dest instr) (instr-dr-reg instr))
-           (fprintf o " /* r~a <- r~a */\n"
+         (define (dr-form _op emit)
+           (fprintf o ";; r~a <- r~a \n"
                     (instr-dr-dest instr)
                     (instr-dr-reg instr))
+           (fprintf o (format-with-newlines (emit)))
            (next))
          
-         (define (di-form _op di-imm)
-           (emit-do _op (instr-di-dest instr) di-imm)
-           (fprintf o "/* r~a <- 0x~x */\n"
+         (define (di-form _op emit)
+           (fprintf o ";; r~a <- 0x~x \n"
                     (instr-di-dest instr)
-                    di-imm)
+                    (instr-di-imm instr))
+           (fprintf o (format-with-newlines (emit)))
            (next))
          
          (define (drr-form _op)
            (emit-do _op (instr-drr-dest instr) (instr-drr-reg1 instr) (instr-drr-reg2 instr))
-           (fprintf o "/* r~a <- r~a, r~a */\n"
+           (fprintf o ";; r~a <- r~a, r~a\n"
                     (instr-drr-dest instr)
                     (instr-drr-reg1 instr)
                     (instr-drr-reg2 instr))
            (next))
          
-         (define (dri-form _op)
-           (emit-do _op
+         (define (dri-form _op emit)
+           (fprintf o ";; r~a <- r~a, 0x~x\n"
                     (instr-dri-dest instr)
                     (instr-dri-reg instr)
                     (instr-dri-imm instr))
-           (fprintf o "/* r~a <- r~a, 0x~x */\n"
-                    (instr-dri-dest instr)
-                    (instr-dri-reg instr)
-                    (instr-dri-imm instr))
+           (fprintf o (format-with-newlines (emit)))
            (next))
 
          (define (n-form _op)
@@ -953,7 +961,10 @@
          (define (call-form _op)
            (emit-foreign-call o instr)
            (next))
-      
+
+         (define (code-rel base cur-i)
+            (fx- cur-i base))
+          
          (define-syntax (emit stx)
             (syntax-case stx (di/u
                                di di/f dr dr/f dr/x
@@ -965,23 +976,70 @@
                                d-lo-bits->i-bits d-hi-bits->i-bits
                                binop)
               ; mov16
-               [(_ op di/u mov16/z shift) #'(unimplemented 'op)]
-               [(_ op di/u mov16/k shift) #'(unimplemented 'op)]
+               [(_ op di/u mov16/z shift) 
+                  #'(di-form 'op 
+                    (lambda ()
+                      (emit-pb-mov16-pb-zero-bits-pb-shift 
+                        (instr-di-dest instr)
+                        (instr-di-imm instr)
+                        (case (datum shift)
+                          [(shift0) 0]
+                          [(shift1) 1]
+                          [(shift2) 2]
+                          [(shift3) 3])
+                        '$ms)))]
+               [(_ op di/u mov16/k shift) 
+                  #'(di-form 'op
+                      (lambda ()
+                        (emit-pb-mov16-pb-keep-bits-pb-shift 
+                          (instr-di-dest instr)
+                          (instr-di-imm instr)
+                          #,(case (datum shift)
+                            [(shift0) 0]
+                            [(shift1) 1]
+                            [(shift2) 2]
+                            [(shift3) 3])
+                          '$ms)))]
 
               ; mov
-               [(_ _ dr mov i->i) #'(unimplemented 'op)]
-               [(_ _ dr mov d->d) #'(unimplemented 'op)]
-               [(_ _ dr mov i->d) #'(unimplemented 'op)]
-               [(_ _ dr mov d->i) #'(unimplemented 'op)]
-               [(_ _ dr mov s->d) #'(unimplemented 'op)]
-               [(_ _ dr mov d->s) #'(unimplemented 'op)]
-               [(_ _ dr mov d->s->d) #'(unimplemented 'op)]
-               [(_ _ dr mov i-bits->d-bits) #'(unimplemented 'op)]
-               [(_ _ dr mov d-bits->i-bits) #'(unimplemented 'op)]
-               [(_ _ drr mov i-i-bits->d-bits) #'(unimplemented 'op)]
-               [(_ _ dr mov d-lo-bits->i-bits) #'(unimplemented 'op)]
-               [(_ _ dr mov d-hi-bits->i-bits) #'(unimplemented 'op)]
+               [(_ op dr mov i->i) 
+                #'(di-form 'op
+                    (lambda ()
+                      (emit-pb-mov-pb-i-i 
+                        (instr-dr-dest instr) 
+                        (instr-dr-reg instr)
+                        '$ms)))]
+               [(_ op dr mov d->d) #'(unimplemented 'op)]
+               [(_ op dr mov i->d) #'(unimplemented 'op)]
+               [(_ op dr mov d->i) #'(unimplemented 'op)]
+               [(_ op dr mov s->d) #'(unimplemented 'op)]
+               [(_ op dr mov d->s) #'(unimplemented 'op)]
+               [(_ op dr mov d->s->d) #'(unimplemented 'op)]
+               [(_ op dr mov i-bits->d-bits) #'(unimplemented 'op)]
+               [(_ op dr mov d-bits->i-bits) #'(unimplemented 'op)]
+               [(_ op drr mov i-i-bits->d-bits) #'(unimplemented 'op)]
+               [(_ op dr mov d-lo-bits->i-bits) #'(unimplemented 'op)]
+               [(_ op dr mov d-hi-bits->i-bits) #'(unimplemented 'op)]
 
+               ; cmp
+               [(_ op dr/f cmp-op) #'(dr-form 'op 
+                                    (lambda () 
+                                      (emit-pb-cmp-op-pb-register 
+                                        (instr-dr-dest instr)
+                                        (instr-dr-reg instr)
+                                        '$ms
+                                        'cmp-op
+                                        '$flag)))]
+                
+                [(_ op di/f cmp-op) #'(di-form 'op
+                                        (lambda ()
+                                          (emit-pb-cmp-op-pb-immediate
+                                            (instr-di-dest instr)
+                                            (instr-di-imm instr)
+                                            '$ms
+                                            'cmp-op
+                                            '$flag)))]
+                
                 ; bin ops
                [(_ _ drr binop bop) 0]
                [(_ _ dri binop bop) 0]
@@ -990,18 +1048,47 @@
                [(_ _ drr/f binop b-op) 0]
                [(_ _ dri/f binop b-op) 0]
 
-               [(_ op r/b test) #`(unimplemented 'op)]
-                ; #'(begin
-                ;     (fprintf o "~a~areturn regs[~a];~a/* ~a */\n"
-                ;              (pre)
-                ;              test
-                ;              (instr-dr-reg instr)
-                ;              (post)
-                ;              '_op)
-                ;     (if (equal? test "")
-                ;         (done)
-                ;         (next)))]
-               [(_ op i/b test) #`(unimplemented 'op)]
+               ; ld
+               [(_ op dri ld src-type) 
+                #'(dri-form 'op
+                    (lambda ()
+                      (emit-pb-ld-pb-immediate
+                        (instr-dri-dest instr) 
+                        (instr-dri-reg instr)
+                        (instr-dri-imm instr)
+                        '$ms
+                        'src-type
+                        8)))]
+                        
+                ; b register
+                [(_ op r/b test)
+                  #'(begin
+                      (fprintf o
+                        (format-with-newlines
+                          (emit-pb-b-pb-register 
+                            (instr-d-dest instr)
+                            (code-rel base-i (fx+ i instr-bytes))
+                            '$ms
+                            test)))
+                      (if (null? test)
+                        (done) 
+                        (next)))]
+
+               [(_ op i/b test) 
+                #'(let* ([delta (instr-i-imm instr)]
+                         [next-instr (fx+ i instr-bytes)]
+                         [target-label (fx+ next-instr delta)]) 
+                    (fprintf o (format-with-newlines
+                      (emit-pb-b-pb-immediate 
+                        (code-rel base-i target-label)
+                        (code-rel base-i next-instr)
+                        '$ms
+                        test)))
+                      (if (null? 'test) 
+                        (done)
+                        (next)))]
+
+
                 ; #'(let* ([delta (instr-i-imm instr)]
                 ;          [target-label (fx+ i instr-bytes delta)])
                 ;     (cond
@@ -1037,7 +1124,13 @@
                 ;              (instr-dr-dest instr)
                 ;              (instr-dr-reg instr))
                 ;     (done))]
-               [(_ op di/b) #`(unimplemented 'op)]
+               [(_ op di/b) 
+                    #'(fprintf o (format-with-newlines
+                        (emit-pb-b*-pb-immediate
+                          (instr-di-dest instr)
+                          (instr-di-imm instr)
+                          '$ms)))]
+               
                 ; #'(let* ([delta (instr-i-imm instr)]
                 ;          [target-label (fx+ i instr-bytes delta)])
                 ;     (fprintf o "~areturn get_~a_addr(~a, ~a);~a/* r~a + 0x~x */\n"
@@ -1056,7 +1149,16 @@
                 ;     (fprintf o "/* ~a */\n" '_op)
                 ;     (done))]
                [(_ op adr) #`(unimplemented 'op)]
-               [(_ op literal) #`(unimplemented 'op)]
+               [(_ op literal)
+                #'(let ([dest (instr-di-dest instr)])
+                    (unless (and (pair? relocs)
+                                 (fx= (fx+ i instr-bytes) (car relocs)))
+                      ($oops 'pbchunk "no relocation after pb-literal?"))
+                    (fprintf o (format-with-newlines
+                      (emit-pb-literal 
+                        dest '$ms (constant ptr-bytes) (code-rel base-i (fx+ i instr-bytes)))))
+                    (loop (fx+ i instr-bytes (constant ptr-bytes)) (cdr relocs) headers labels))]
+               
                 ; #'(let ([dest (instr-di-dest instr)])
                 ;     (unless (and (pair? relocs)
                 ;                  (fx= (fx+ i instr-bytes) (car relocs)))
@@ -1070,7 +1172,8 @@
                 ;     (loop (fx+ i instr-bytes (constant ptr-bytes)) (cdr relocs) headers labels))
                [(_ op nop) #'(next)]
                [(_ op props ...) #`(unimplemented 'op)]))
-              (instruction-cases instr emit)) ])))
+              (display (format "i: ~a\n" i)) 
+              (instruction-cases instr emit))])))
 
 (define (emit-foreign-call o instr)
   (let* ([proto-index (instr-dri-imm instr)]

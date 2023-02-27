@@ -172,7 +172,7 @@
     [else
      (printf "Convert ~s\n" (car src-boots))
      (let ([name (extract-boot-name (car src-boots))])
-       (let ([new-c-files (many (string-append dest "/" "pbchunk_" name "~a.c"))]
+       (let ([new-c-files (many (string-append dest "/" "pbchunk_" name "~a.wat"))]
              [new-reg-names (many (string-append "pbchunk_register_" name "~a"))])
          (let ([index (wasm-pbchunk-convert-file (car src-boots)
                                             (car dest-boots)
