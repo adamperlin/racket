@@ -57,8 +57,7 @@
   ; a desired local variable
   (define (load-and-set ptr out)
     `((local.get ,ptr)
-      (i32.const 0)
-      (i32.load)
+      (i64.load)
       (local.set ,out)))
 
   (define-syntax (wasm-emit stx)
@@ -76,6 +75,7 @@
 
   (define (emit-pb-mov16-pb-zero-bits-pb-shift dest imm-unsigned shift ms)
     (wasm-emit
+      (local $_0 i32)
       ,(generate-regs-lhs dest ms 8 '$_0)
       (local.get $_0)
         ,(case shift
@@ -88,6 +88,9 @@
 
   (define (emit-pb-mov16-pb-keep-bits-pb-shift dest imm-unsigned shift ms)
     (wasm-emit
+      (local $_0 i32)
+      (local $_1 i64)
+      (local $_2 i64)
       ,(generate-regs-lhs dest ms 8 '$_0)
       ,(case shift
           [(0) `(i32.const ,imm-unsigned)]
@@ -222,7 +225,7 @@
     ; introduced within this "scope"
     (wasm-emit (scope '%)
       (local %0 i32)
-      (local %1 i32)
+      (local %1 i64)
       ,(generate-regs-lhs reg ms 8 '%0) 
       ,(load-and-set '%0 '%1)
       (local.get %1)
@@ -298,6 +301,9 @@
 
   (define (do-pb-bin-op-pb-no-signal-pb-register dest reg1 reg2 ms op)
     (wasm-emit
+      (local $_0 i64)
+      (local $_1 i64)
+      (local $_2 i32)
       ,(load-from-reg reg1 ms '$_0)
       ,(load-from-reg reg2 ms '$_1)
       ,(generate-regs-lhs dest ms 8 '$_2)
@@ -310,6 +316,10 @@
 
   (define (do-pb-bin-op-pb-no-signal-pb-immediate dest reg imm ms op)
     (wasm-emit
+      (local $_0 i64)
+      (local $_1 i64)
+      (local $_2 i32)
+
       ,(load-from-reg reg ms '$_0)
       (i32.const imm)
       (i64.extend_i32_u)
@@ -325,72 +335,66 @@
 
   ;; TODO: overflow-enabled operations. Need to determine how to call __builtin_add_overflow etc.
 
-  (define (do-pb-subzp-pb-register dest reg1 reg2 ms zp flag)
-    (wasm-emit
-      (local $_0 i64)
-      (local $_1 i64)
-      (local $_2 i32)
-      (local $_3 i64)
+  (define (unimplemented tag)
+    ($oops 'unimplemented (format "~a\n" tag)))
 
-      ,(load-from-reg ms '$_0) 
-      ,(load-from-reg ms '$_1)
-      ,(generate-regs-lhs dest ms 8 '$_2)
+  (define (emit-pb-binop-signal op op1 op2 flag result)
+    (wasm-emit (scope '%) ; use a different scope indicator so we can use passed in op1 and op2
+                          ; and we don't rewrite them in this nested context
+      (local.get ,op1) 
+      (local.get ,op2)
+      ,(case op
+        [(add) (unimplemented 'add-signal)]
+        [(subz) `(
+          (i64.sub)
+          (local.set ,result)
+          (local.get ,result)
+          (i64.eqz)
+          (local.set ,flag))]
+        [(subp) `(
+          (i64.sub)
+          (i64.const 0)
+          (i64.gt_s)
+          (local.set ,flag)
+          (local.set ,result))]
+        [(mul) (unimplemented 'mul-signal)]
+        [(div) (unimplemented 'div-signal)])))
 
-      ; perform subz
-      (local.get $_0)
-      (local.get $_1)
-      (i64.sub)
-      (local.set $_3)
+  (define (emit-pb-binop-signal-pb-register dest reg1 reg2 ms flag op)
+      (wasm-emit
+        (local $_0 i64)
+        (local $_1 i64)
+        (local $_2 i32)
+        (local $_3 i64)
+        ,(load-from-reg reg1 ms '$_0) 
+        ,(load-from-reg reg2 ms '$_1)
+        ,(generate-regs-lhs dest ms 8 '$_2)
+        ,(emit-pb-binop-signal op '$_0 '$_1 flag '$_3)
 
-      ; load address to assign to
-      (local.get $_2)
+        (local.get $_2)
+        (local.get $_3)
 
-      ; load result
-      (local.get $_3)
+        (i64.store)))
+  
+  (define (emit-pb-binop-signal-pb-immediate dest reg imm ms flag op)
+      (wasm-emit
+        (local $_0 i64)
+        (local $_1 i64)
+        (local $_2 i32)
+        (local $_3 i64)
+        ,(load-from-reg reg ms '$_0)
 
-      ; store to perform assignment
-      (i64.store)
+        (i32.const ,imm)
+        (i64.extend_i32_u)
+        (local.set $_1)
 
-      ; perform eqz
-      (local.get $_3)
-      ,(case zp
-        [(z) '(i64.eqz)]
-        [(p) '((i64.const 0) (i64.gt_s))])
+        ,(generate-regs-lhs dest ms 8 '$_2)
+        ,(emit-pb-binop-signal op '$_0 '$_1 flag '$_3)
 
-      ; assign to flag
-      (local.set ,flag)))
+        (local.get $_2)
+        (local.get $_3)
 
-  (define (do-pb-subzp-pb-immediate dest reg1 imm ms zp flag)
-    (wasm-emit
-      (local $_0 i64)
-      (local $_1 i64)
-      (local $_2 i32)
-      (local $_3 i64)
-
-      ,(load-from-reg ms '$_0) 
-      (i32.const imm)
-      (i64.extend_i32_u)
-      (local.set $_1)
-      ,(generate-regs-lhs dest ms 8 '$_2)
-
-      ; load address to store to
-      (local.get $_2)
-
-      ; perform sub
-      (local.get $_0)
-      (local.get $_1)
-      (i64.sub)
-      (local.set $_3)
-
-      ; store to perform assignment
-      (i64.store)
-
-      (local.get $_3)
-      ,(case zp
-        [(z) '(i64.eqz)]
-        [(p) '((i64.const 0) (i64.gt_s))])
-
-      (local.set ,flag)))
+        (i64.store)))
 
   (define (do-pb-cmp-op-no-signal op op1 op2)
     (wasm-emit (scope '%)
@@ -415,6 +419,8 @@
 
   (define (emit-pb-cmp-op-pb-register reg1 reg2 ms cmp-op flag)
     (wasm-emit
+      (local $_0 i64)
+      (local $_1 i64) 
       ,(load-from-reg reg1 ms '$_0)
       ,(load-from-reg reg2 ms '$_1)
       ,(do-pb-cmp-op-no-signal cmp-op '$_0 '$_1)
@@ -423,6 +429,8 @@
     
   (define (emit-pb-cmp-op-pb-immediate reg imm ms cmp-op flag)
     (wasm-emit
+      (local $_0 i64)
+      (local $_1 i64)
       ,(load-from-reg reg ms '$_0)
 
       (i32.const ,imm)
@@ -505,14 +513,17 @@
 
     (wasm-emit
       (local $_0 i32)
-      (local $_1 i32)
+      (local $_1 i64)
+      (local $_2 ,dest-type)
       ,(if (or (equal? dest-type 'single) (equal? dest-type 'double))
          (generate-fpregs-lhs dest ms word-size '$_0)
          (generate-regs-lhs dest ms word-size '$_0))
       ,(load-from-reg base ms '$_1)
-
       (local.get $_1)
+      (i32.wrap_i64)
       (i32.const ,imm)
+      (i32.add)
+
       (,load-op)
       (local.set $_2)
 
@@ -523,8 +534,10 @@
   
   (define (emit-pb-b*-pb-immediate base target-offset ms)
     (wasm-emit
-      (local $_0 i32)
+      (local $_0 i64)
       ,(load-from-reg base ms '$_0)
+      (local.get $_0)
+      (i32.wrap_i64)
       (i32.const ,target-offset)
       (i32.add)
       (return)))
@@ -533,11 +546,8 @@
     (wasm-emit
       ,(if (null? test) '(i32.const 1) test)
       (if 
-          (block
-            (local.get $ip)
-            (i32.const ,target-offset)
-            (i32.add)
-            (return))
+          (return (i32.add (local.get $ip)
+                    (i32.const ,target-offset)))
           (return (i32.add 
                     (local.get $ip) 
                     (i32.const ,next-instr))))))
@@ -546,12 +556,16 @@
     (wasm-emit
       ,(if (null? test) '(i32.const 1) test)
       (if 
-        (block 
-          (local $_0 i32) 
-          ,(load-from-reg reg ms '$_0)
-          (return))
-        (return (i32.add (local.get $ip) 
-                        (i32.const next-instr))))))
+        ,(append
+          '(then)
+            (wasm-emit
+              (local $_0 i64)
+              ,(load-from-reg reg ms '$_0)
+              (local.get $_0)
+              (i32.wrap_i64)
+              (return)))
+        (else (return (i32.add (local.get $ip) 
+                        (i32.const ,next-instr)))))))
   
   (define (format-with-newlines wasm-sexp)
     (fold-left 
@@ -568,6 +582,49 @@
   ;       [(equal? (car str-lst) c) i]
   ;       [else (loop (+ 1 i) (cdr str-lst))])))
 
+
+  ;; we assume the local definition is valid here
+(define (is-local-def? sexp)
+    (and (pair? sexp) (equal? (car sexp) 'local)))
+
+;; we assume the local definition is valid here
+(define (is-if-form? sexp)
+    (and (pair? sexp) (equal? (car sexp) 'if)))
+
+(define (then-block wasm-if)
+  (cadr wasm-if))
+
+(define (else-block wasm-if) 
+  (if (pair? (cddr wasm-if))
+    (caddr wasm-if)
+    '()))
+
+; moves local variable definitions that were generated while
+; compiling a function to the beginning of the generated wasm
+(define (hoist-locals wasm)
+  (let-values ([(new-wasm locals)
+    (let traverse ([src-wasm wasm] [built-wasm '()] [locals '()])
+      (cond 
+          [(null? src-wasm) (values built-wasm locals)]
+          [(is-local-def? (car src-wasm))
+            ;; do not add locals to the new wasm tree, but collect as part of locals list
+            (traverse (cdr src-wasm) built-wasm (cons (car src-wasm) locals))]
+          [(is-if-form? (car src-wasm)) 
+            ; recurse on if and else branches
+            (let-values ([(built-then new-locals1) (traverse (then-block (car src-wasm)) '() '())]
+                        [(built-else new-locals2) (traverse (else-block (car src-wasm)) '() '())])
+              (traverse (cdr src-wasm)
+                        (if (null? built-else) 
+                          (append built-wasm `((if 
+                                                ,built-then)))
+                          (append built-wasm `((if 
+                                                ,built-then
+                                                ,built-else))))
+                        (append locals new-locals1 new-locals2)))]
+          ; anything that is not a local declaration is not touched
+          [else (traverse (cdr src-wasm) (append built-wasm (list (car src-wasm))) locals)]))])
+    (append locals new-wasm)))
+
   (define (is-temp-var? sym)
     (let ([name (symbol->string sym)])
       (and (>= (string-length name) 2)
@@ -578,7 +635,7 @@
           [pref-len (string-length prefix)])
       (and (>= (string-length name) pref-len)
         (equal? (substring name 0 pref-len) prefix))))
-
+  
   (define (uniquify-free-vars wasm-tree local-gen only-scope)
     (define assigned (make-hashtable symbol-hash equal?))
     (define default-prefix "$_")
@@ -591,7 +648,7 @@
         [(and (symbol? node) (has-prefix? node prefix))
           (if (symbol-hashtable-contains? assigned node)
             (symbol-hashtable-ref assigned node 0)
-            (let ([new-name (format "$~a" (local-gen))])
+            (let ([new-name (format "$v~a" (local-gen))])
                 (symbol-hashtable-set! assigned node new-name)
                   new-name))]
                   

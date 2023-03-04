@@ -9,6 +9,8 @@
   (include "strip-types.ss")
   (include "wasm-emit.ss")
 
+  (define module-mem-size 20000)
+
   ; (define (collect-types (type-list )))
     
   ; (define (local-declare assigned types)
@@ -135,12 +137,16 @@
                         [line (get-line ip)])
              (unless (null? c-ops)
                (let ([c-op (car c-ops)])
+                (put-string c-op (format "(module\n\t(memory ~a)" module-mem-size))
                  (let chunk-loop ([fuel per-file] [n 0] [line line])
                    (cond
                      [(or (eof-object? line)
                           (and (fxzero? fuel)
                                (chunk-start-line? line)))
                       ;(write-registration c-op (car reg-proc-names) index (fx+ index n))
+
+                      ; close module
+                      (put-string c-op ")")
                       (close-port c-op)
                       (c-loop (cdr c-ops)
                               (cdr reg-proc-names)
@@ -492,6 +498,20 @@
            (chunklet-end-i c))
       (chunklet-continue-only? c)))
 
+(define (is-comment? wasm-sexp)
+  (and (pair? wasm-sexp) (equal? (car wasm-sexp) 'comment)))
+
+(define (comment-string wasm-comment) (cdr wasm-comment))
+
+(define (write-compiled-wasm o wasm)
+  (let write-loop ([wasm wasm])
+    (unless (null? wasm)
+      (let ([cur (car wasm)])
+      (cond
+        [(is-comment? cur) (display cur) (fprintf o "\t~a\n" (comment-string cur))]
+        [else (fprintf o "\t~a\n" cur)]))
+          (write-loop (cdr wasm)))))
+
 ;; Found a code object, maybe generate a chunk
 (define (chunk-code! name bv vreloc ci only-funcs)
   (let ([len (bytevector-length bv)]
@@ -507,8 +527,7 @@
                                 (loop off (cdr rels))))]
                        [else '()])]))]
         [name (extract-name name)])
-    
-    
+        
     (fprintf o "\n;; code ~a \n" name)
     (unless (or (equal? name "winder-dummy") (and (pair? only-funcs) (not (member name only-funcs)))) ; hack to avoid special rp header in dounderflow
       (display (format "name: ~a\n" name))
@@ -554,7 +573,7 @@
                (let loop ([chunklets chunklets])
                  (unless (null? chunklets)
                    (let ([c (car chunklets)])
-                     (emit-chunklet o bv
+                     (compile-chunklet o bv
                                     (chunklet-i c) 0
                                     (chunklet-relocs c) (chunklet-headers c) '()
                                     (chunklet-end-i c) ; => treat as empty
@@ -580,7 +599,13 @@
                     ;; generate a non-empty chunk as its own function
                     (unless (empty-chunklet? c)
                       (emit-wasm-chunk-header o index #f (chunklet-uses-flag? c)))
-                    (emit-chunklet o bv
+                    
+                    (unless (empty-chunklet? c)
+                      (display (format "chunklet-i: ~a; chunklet-start-i: ~a; chunklet-end-i: ~a\n"
+                        (chunklet-i c) (chunklet-start-i c) (chunklet-end-i c))))
+
+                    (let ([compiled-wasm 
+                            (compile-chunklet o bv
                                    (chunklet-i c) (chunklet-start-i c)
                                    (chunklet-relocs c) (chunklet-headers c) (chunklet-labels c)
                                    (if (chunklet-continue-only? c)
@@ -589,7 +614,9 @@
                                    (chunklet-end-i c)
                                    (list c) ; `goto` branches contrained to this chunklet
                                    ;; fallthrough?
-                                   (empty-chunklet? c))
+                                   (empty-chunklet? c))]) 
+                                   (write-compiled-wasm o (hoist-locals compiled-wasm)))
+
                     (unless (empty-chunklet? c)
                       (emit-wasm-chunk-footer o)
                       (bytevector-u32-set! bv (chunklet-start-i c) (make-chunk-instr index 0) (constant fasl-endianness)))
@@ -623,7 +650,7 @@
                  (unless (null? chunklets)
                    (let ([c (car chunklets)])
                      ;; emit a chunklet within the function
-                     (emit-chunklet o bv
+                     (compile-chunklet o bv
                                     (chunklet-i c) 0
                                     (chunklet-relocs c) (chunklet-headers c)
                                     (if (empty-chunklet? c)
@@ -776,6 +803,11 @@
            (when now-uses-flag? (check-flag))
            (loop (fx+ i instr-bytes) relocs headers labels (or start-i i) #f (or uses-flag?
                                                                                  now-uses-flag?)))
+         (define (keep-and-stop-after now-uses-flag?)
+           (when now-uses-flag? (check-flag))
+           (values (or start-i i) (fx+ i instr-bytes) (or uses-flag?
+                                                          now-uses-flag?)))
+
          (define (keep-signalling)
            (loop (fx+ i instr-bytes) relocs headers labels (or start-i i) #t uses-flag?))
          (define (skip)
@@ -801,17 +833,17 @@
              [(_ op dr/x) #'(stop-before)]
              [(_ op d/x) #'(stop-before)]
              [(_ op n/x) #'(stop-before)]
-             [(_ op r/b "") #'(stop-after)]
-             [(_ op i/b "") #'(stop-after)]
-             [(_ op r/b . _) #'(stop-after)]
-             [(_ op i/b . _) #'(stop-after)]
+             [(_ op r/b '()) #'(keep-and-stop-after #f)]
+             [(_ op i/b '()) #'(keep-and-stop-after #f)]
+             [(_ op r/b _) #'(keep-and-stop-after #t)]
+             [(_ op i/b _) #'(keep-and-stop-after #t)]
              [(_ op d/f) #'(keep-signalling)]
-             [(_ op dr/b) #'(stop-after)]
-             [(_ op di/b) #'(stop-after)]
-             [(_ op dr/f) #'(keep-signalling)]
-             [(_ op di/f) #'(keep-signalling)]
-             [(_ op drr/f) #'(keep-signalling)]
-             [(_ op dri/f) #'(keep-signalling)]
+             [(_ op dr/b . _) #'(stop-after)]
+             [(_ op di/b . _) #'(stop-after)]
+             [(_ op dr/f . _) #'(keep-signalling)]
+             [(_ op di/f . _) #'(keep-signalling)]
+             [(_ op drr/f . _) #'(keep-signalling)]
+             [(_ op dri/f . _) #'(keep-signalling)]
              [(_ op literal) #'(keep-literal)]
              [_ #'(skip)]))
          (instruction-cases instr dispatch))])))
@@ -820,7 +852,7 @@
 ;   ; sub-index is currently unsupported
 ;   `(func ,(string->symbol (format "$chunk_~a" index))
 ;     (param $ms i32)
-;     (param $ip i64)
+;     (param $ip i32)
 ;     (result i32)
 ;     ,(if uses-flag?
 ;       '(local $flag i32)
@@ -832,11 +864,11 @@
   (fprintf o 
     "(func $chunk_~a
         (param $ms i32)
-        (param $ip i64)
+        (param $ip i32)
         (result i32)
         ~a"
         index 
-        (if uses-flag? "(local $flag i32)" "")))
+        (if uses-flag? "(local $flag i32)\n" "")))
   
 (define (emit-wasm-chunk-footer o)
   (fprintf o ")\n"))
@@ -851,17 +883,19 @@
 ; (define (emit-chunk-footer o)
 ;   (fprintf o "}\n"))
 
+(define (code-rel base cur-i)
+  (fx- cur-i base))
 
 ;; just show decoded instructions from `i` until `start-i`, then
 ;; generate a chunk function from `start-i` to `end-i`
-(define (emit-chunklet o bv i base-i relocs headers labels start-i end-i chunklets fallthrough?)
+(define (compile-chunklet o bv i base-i relocs headers labels start-i end-i chunklets fallthrough?)
   (define (in-chunk? target)
     (ormap (lambda (c)
              (and (fx>= target (chunklet-start-i c))
                   (fx< target (chunklet-end-i c))))
            chunklets))
  
-  (let loop ([i i] [relocs relocs] [headers headers] [labels labels])
+  (let loop ([i i] [relocs relocs] [headers headers] [labels labels] [generated (list)])
     (cond
       [(and (pair? headers)
             (fx= i (caar headers)))
@@ -875,30 +909,34 @@
               (loop i
                     (advance-relocs relocs i)
                     (cdr headers)
-                    labels)))])]
+                    labels
+                    generated)))])]
       [(fx= i end-i)
+        (display (format "Hit end\n"))
        (unless fallthrough?
-          (fprintf o "(return next-address)"))]
+        (let ([next-instr (fx+ i instr-bytes)])
+               (append
+                generated
+               `((return (i32.add (local.get $ip) (i32.const ,(code-rel base-i next-instr))))))))]
       [(and (pair? labels)
             (fx= i (label-to (car labels))))
        (when (fx>= i start-i)
          (let ([a (car labels)])
            (when (ormap in-chunk? (label-all-from a))
              (fprintf o "label_~x:\n" i))))
-       (loop i relocs headers (cdr labels))]
+       (loop i relocs headers (cdr labels) generated)]
       [else
        (let ([instr (bytevector-s32-ref bv i (constant fasl-endianness))]
              [uinstr (bytevector-u32-ref bv i (constant fasl-endianness))])
-
        
          (define (unimplemented instr) 
           ($oops 'emit-chunk "instruction opcode ~a is unimplemented" instr))
 
-         (define (next)
-           (loop (fx+ i instr-bytes) relocs headers labels))
+         (define (next generated)
+           (loop (fx+ i instr-bytes) relocs headers labels generated))
 
-         (define (done)
-           (next))
+         (define (done generated)
+           (next generated))
 
          (define (pre)
            (string-append
@@ -924,47 +962,61 @@
            (next))
 
          (define (dr-form _op emit)
-           (fprintf o ";; r~a <- r~a \n"
-                    (instr-dr-dest instr)
-                    (instr-dr-reg instr))
-           (fprintf o (format-with-newlines (emit)))
-           (next))
+          (next (append generated
+            (`(comment . ,(format ";; r~a <- r~a" 
+                        (instr-dr-dest instr)
+                        (instr-dr-reg instr))))
+            (emit))))
          
          (define (di-form _op emit)
-           (fprintf o ";; r~a <- 0x~x \n"
+          (next (append generated
+           `((comment . ,(format ";; r~a <- 0x~x"
                     (instr-di-dest instr)
-                    (instr-di-imm instr))
-           (fprintf o (format-with-newlines (emit)))
-           (next))
+                    (instr-di-imm instr))))
+            (emit))))
          
          (define (drr-form _op)
            (emit-do _op (instr-drr-dest instr) (instr-drr-reg1 instr) (instr-drr-reg2 instr))
-           (fprintf o ";; r~a <- r~a, r~a\n"
-                    (instr-drr-dest instr)
-                    (instr-drr-reg1 instr)
-                    (instr-drr-reg2 instr))
-           (next))
+           (next 
+            (append generated
+              `((comment . ,(format ";; r~a <- r~a, r~a"
+                        (instr-drr-dest instr)
+                        (instr-drr-reg1 instr)
+                        (instr-drr-reg2 instr)))))))
          
          (define (dri-form _op emit)
-           (fprintf o ";; r~a <- r~a, 0x~x\n"
+           (next (append generated 
+            `((comment . ,(format ";; r~a <- r~a, 0x~x\n"
                     (instr-dri-dest instr)
                     (instr-dri-reg instr)
-                    (instr-dri-imm instr))
-           (fprintf o (format-with-newlines (emit)))
-           (next))
-
-         (define (n-form _op)
-           (emit-do _op)
-           (fprintf o "\n")
-           (next))
-
-         (define (call-form _op)
-           (emit-foreign-call o instr)
-           (next))
-
-         (define (code-rel base cur-i)
-            (fx- cur-i base))
+                    (instr-dri-imm instr))))
+            (emit))))
+        
+          (define (r/b-form _op emit)
+              (next (append generated
+                `((comment . ,(format ";; b r~a" (instr-d-dest instr)))) 
+                 (emit)
+              )))
           
+          (define (i/b-form _op emit)
+              (next (append generated
+                `((comment . ,(format ";; b ~a" (instr-i-imm instr)))) 
+                 (emit))))
+          (define (di/b-form _op emit)
+            (next (append 
+                    generated
+                    `((comment . ,(format ";; b r~a, ~a" (instr-di-dest instr) (instr-di-imm instr))))            
+                    (emit))))
+
+        ;  (define (n-form _op)
+        ;    (emit-do _op)
+        ;    (fprintf o "\n")
+        ;    (next))
+
+        ;  (define (call-form _op)
+        ;    (emit-foreign-call o instr)
+        ;    (next))
+
          (define-syntax (emit stx)
             (syntax-case stx (di/u
                                di di/f dr dr/f dr/x
@@ -1041,12 +1093,29 @@
                                             '$flag)))]
                 
                 ; bin ops
-               [(_ _ drr binop bop) 0]
-               [(_ _ dri binop bop) 0]
+               [(_ op drr binop bop) #'(unimplemented 'op)]
+               [(_ op dri binop bop) #'(unimplemented 'op)]
 
                ; signaling bin ops
-               [(_ _ drr/f binop b-op) 0]
-               [(_ _ dri/f binop b-op) 0]
+               [(_ op drr/f binop b-op) #'(drr-form 'op
+                                            (lambda ()
+                                              (emit-pb-binop-signal-pb-register
+                                                (instr-drr-dest instr)
+                                                (instr-drr-reg1 instr)
+                                                (instr-drr-reg2 instr)
+                                                '$ms
+                                                '$flag
+                                                'b-op)))]
+
+               [(_ op dri/f binop b-op) #'(dri-form 'op
+                                            (lambda ()
+                                              (emit-pb-binop-signal-pb-immediate 
+                                                (instr-dri-dest instr)
+                                                (instr-dri-reg instr)
+                                                (instr-dri-imm instr)
+                                                '$ms
+                                                '$flag
+                                                'b-op)))]
 
                ; ld
                [(_ op dri ld src-type) 
@@ -1062,33 +1131,24 @@
                         
                 ; b register
                 [(_ op r/b test)
-                  #'(begin
-                      (fprintf o
-                        (format-with-newlines
+                  #'(r/b-form 'op (lambda ()
                           (emit-pb-b-pb-register 
                             (instr-d-dest instr)
                             (code-rel base-i (fx+ i instr-bytes))
                             '$ms
-                            test)))
-                      (if (null? test)
-                        (done) 
-                        (next)))]
+                            test)))]
 
                [(_ op i/b test) 
-                #'(let* ([delta (instr-i-imm instr)]
-                         [next-instr (fx+ i instr-bytes)]
-                         [target-label (fx+ next-instr delta)]) 
-                    (fprintf o (format-with-newlines
-                      (emit-pb-b-pb-immediate 
-                        (code-rel base-i target-label)
-                        (code-rel base-i next-instr)
-                        '$ms
-                        test)))
-                      (if (null? 'test) 
-                        (done)
-                        (next)))]
-
-
+                  #'(i/b-form 'op (lambda ()
+                      (let* ([delta (instr-i-imm instr)]
+                            [next-instr (fx+ i instr-bytes)]
+                            [target-label (fx+ next-instr delta)]) 
+                          (emit-pb-b-pb-immediate 
+                            (code-rel base-i target-label)
+                            (code-rel base-i next-instr)
+                            '$ms
+                            test))))]
+                  
                 ; #'(let* ([delta (instr-i-imm instr)]
                 ;          [target-label (fx+ i instr-bytes delta)])
                 ;     (cond
@@ -1124,12 +1184,18 @@
                 ;              (instr-dr-dest instr)
                 ;              (instr-dr-reg instr))
                 ;     (done))]
-               [(_ op di/b) 
-                    #'(fprintf o (format-with-newlines
-                        (emit-pb-b*-pb-immediate
-                          (instr-di-dest instr)
-                          (instr-di-imm instr)
-                          '$ms)))]
+               [(_ op di/b) #'(unimplemented 'op)
+                #'(di/b-form 'op
+                  (lambda ()
+                    (emit-pb-b*-pb-immediate
+                      (instr-di-dest instr)
+                      (instr-di-imm instr)
+                      '$ms)))]
+                    ; #'(fprintf o (format-with-newlines
+                    ;     (emit-pb-b*-pb-immediate
+                    ;       (instr-di-dest instr)
+                    ;       (instr-di-imm instr)
+                    ;       '$ms)))]
                
                 ; #'(let* ([delta (instr-i-imm instr)]
                 ;          [target-label (fx+ i instr-bytes delta)])
@@ -1142,7 +1208,7 @@
                 ;              (instr-di-dest instr)
                 ;              (instr-di-imm instr))
                 ;     (done))]
-               [(_ op n) #'(n-form '_op)]
+               [(_ op n) #`(unimplemented 'op)]
                [(_ op n/x) #`(unimplemented 'op)]
                 ; #'(begin
                 ;     (emit-return)
@@ -1154,10 +1220,12 @@
                     (unless (and (pair? relocs)
                                  (fx= (fx+ i instr-bytes) (car relocs)))
                       ($oops 'pbchunk "no relocation after pb-literal?"))
-                    (fprintf o (format-with-newlines
-                      (emit-pb-literal 
-                        dest '$ms (constant ptr-bytes) (code-rel base-i (fx+ i instr-bytes)))))
-                    (loop (fx+ i instr-bytes (constant ptr-bytes)) (cdr relocs) headers labels))]
+                      (let ([gen (append generated 
+                                  (emit-pb-literal 
+                                        dest '$ms 
+                                        (constant ptr-bytes) 
+                                        (code-rel base-i (fx+ i instr-bytes))))])
+                        (loop (fx+ i instr-bytes (constant ptr-bytes)) (cdr relocs) headers labels gen)))]
                
                 ; #'(let ([dest (instr-di-dest instr)])
                 ;     (unless (and (pair? relocs)
@@ -1170,7 +1238,7 @@
                 ;              (fx+ i instr-bytes)
                 ;              (post))
                 ;     (loop (fx+ i instr-bytes (constant ptr-bytes)) (cdr relocs) headers labels))
-               [(_ op nop) #'(next)]
+               [(_ op nop) #'(next generated)]
                [(_ op props ...) #`(unimplemented 'op)]))
               (display (format "i: ~a\n" i)) 
               (instruction-cases instr emit))])))
