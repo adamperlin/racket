@@ -407,11 +407,14 @@ fi
 
 if [ $emscripten = yes ] ; then
     pb=yes
-    bits=32
+    threads=no
+    bits=64
     if [ "$m" != "" ] ; then
         echo "Don't combine --emscripten with -m or --machine"
         exit 1
     fi
+    m64=pb64l
+    tm64=tpb64l
     m32=pb32l
     tm32=tpb32l
 fi
@@ -616,9 +619,11 @@ optFlags=-O2
 
 if [ "$emscripten" = "yes" ]; then
     flagsm=em
+    #threads=no
     buildKernelOnly=yes
     disableiconv=yes
     disablecurses=yes
+    optFlags=-O0
 fi
 
 if [ "$cflagsset" = "no" -o "$addwarningflags" = "yes" ] ; then
@@ -694,7 +699,7 @@ if [ "$cflagsset" = "no" ] ; then
         CFLAGS="-mabi=lp64d ${optFlags}"
         ;;
     em)
-        CFLAGS="${optFlags}"
+        CFLAGS="${optFlags} -DWASM_PBCHUNK -DCALL_WASM_PBCHUNK_REGISTER"
         ;;
     *)
         CFLAGS="${optFlags}"

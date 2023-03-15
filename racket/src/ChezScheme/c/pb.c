@@ -13,13 +13,27 @@ typedef uptr (*chunk_t)(machine_state *ms, uptr, int);
 static chunk_t *chunks;
 static int num_chunks;
 
+#ifdef WASM_PBCHUNK
+extern uptr wasm_do_jump(int jump_idx, machine_state *ms, uptr ip);
+#endif
+
 #ifdef CALL_PBCHUNK_REGISTER
 extern void pbchunk_register();
 void S_machine_init() { pbchunk_register(); }
 #else
+
+#ifdef CALL_WASM_PBCHUNK_REGISTER
+extern void wasm_pbchunk_register();
+void S_machine_init() { wasm_pbchunk_register(); }
+
+#else
+
 # ifndef FEATURE_WINDOWS
 void S_machine_init() { }
 # endif
+
+#endif
+
 #endif
 
 void Sregister_pbchunks(void **add_chunks, int start_index, int end_index) {
@@ -48,7 +62,8 @@ static instruction_t *call_from; static void *call_to;
 # define TRACE(print, record) /* empty */
 #endif
 
-#define COMMON_INSTR(x) x: doi_ ## x(instr); break;
+//#define COMMON_INSTR(x, tag) x: doi_ ## x(instr); printf("instruction: %d\n", tag); break;
+#define COMMON_INSTR(x, tag) x: doi_ ## x(instr); break;
 
 void S_pb_interp(ptr tc, void *bytecode) {
   machine_state * RESTRICT_PTR ms = (machine_state *)&PBREGS(tc, 0); /* assumes fields are together in `tc` */
@@ -74,124 +89,124 @@ void S_pb_interp(ptr tc, void *bytecode) {
       next_ip = ip + 2;
 #endif
       break;
-    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift0)
-    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift1)
-    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift2)
-    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift3)
-    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift0)
-    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift1)
-    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift2)
-    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift3)
-    case COMMON_INSTR(pb_mov_pb_i_i)
-    case COMMON_INSTR(pb_mov_pb_d_d)
-    case COMMON_INSTR(pb_mov_pb_i_d)
-    case COMMON_INSTR(pb_mov_pb_d_i)
+    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift0, 0xA1)
+    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift1, 0xA2)
+    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift2, 0xA3)
+    case COMMON_INSTR(pb_mov16_pb_zero_bits_pb_shift3, 0xA4)
+    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift0, 0xA5)
+    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift1, 0xA6)
+    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift2, 0xA7)
+    case COMMON_INSTR(pb_mov16_pb_keep_bits_pb_shift3, 0xA8)
+    case COMMON_INSTR(pb_mov_pb_i_i, 0xA9)
+    case COMMON_INSTR(pb_mov_pb_d_d, 0xAA)
+    case COMMON_INSTR(pb_mov_pb_i_d, 0xAB)
+    case COMMON_INSTR(pb_mov_pb_d_i, 0xAC)
 #if ptr_bits == 64
-    case COMMON_INSTR(pb_mov_pb_i_bits_d_bits)
-    case COMMON_INSTR(pb_mov_pb_d_bits_i_bits)
+    case COMMON_INSTR(pb_mov_pb_i_bits_d_bits, 0xAD)
+    case COMMON_INSTR(pb_mov_pb_d_bits_i_bits, 0xAE)
 #else
-    case COMMON_INSTR(pb_mov_pb_i_i_bits_d_bits)
-    case COMMON_INSTR(pb_mov_pb_d_lo_bits_i_bits)
-    case COMMON_INSTR(pb_mov_pb_d_hi_bits_i_bits)
+    case COMMON_INSTR(pb_mov_pb_i_i_bits_d_bits, 0xAF)
+    case COMMON_INSTR(pb_mov_pb_d_lo_bits_i_bits, 0xB0)
+    case COMMON_INSTR(pb_mov_pb_d_hi_bits_i_bits, 0xB1)
 #endif      
-    case COMMON_INSTR(pb_mov_pb_s_d)
-    case COMMON_INSTR(pb_mov_pb_d_s)
-    case COMMON_INSTR(pb_mov_pb_d_s_d)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_add_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_add_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_sub_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_sub_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_mul_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_mul_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_div_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_div_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_and_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_and_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_ior_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_ior_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_xor_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_xor_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsl_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsl_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsr_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsr_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_asr_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_asr_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lslo_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lslo_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_add_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_add_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_sub_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_sub_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_mul_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_mul_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subz_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subz_pb_immediate)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subp_pb_register)
-    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subp_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_eq_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_eq_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_lt_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_lt_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_gt_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_gt_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_le_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_le_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_ge_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_ge_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_ab_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_ab_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_bl_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_bl_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_cs_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_cs_pb_immediate)
-    case COMMON_INSTR(pb_cmp_op_pb_cc_pb_register)
-    case COMMON_INSTR(pb_cmp_op_pb_cc_pb_immediate)
-    case COMMON_INSTR(pb_fp_bin_op_pb_add_pb_register)
-    case COMMON_INSTR(pb_fp_bin_op_pb_sub_pb_register)
-    case COMMON_INSTR(pb_fp_bin_op_pb_mul_pb_register)
-    case COMMON_INSTR(pb_fp_bin_op_pb_div_pb_register)
-    case COMMON_INSTR(pb_un_op_pb_not_pb_register)
-    case COMMON_INSTR(pb_un_op_pb_not_pb_immediate)
-    case COMMON_INSTR(pb_fp_un_op_pb_sqrt_pb_register)
-    case COMMON_INSTR(pb_fp_cmp_op_pb_eq_pb_register)
-    case COMMON_INSTR(pb_fp_cmp_op_pb_lt_pb_register)
-    case COMMON_INSTR(pb_fp_cmp_op_pb_le_pb_register)
-    case COMMON_INSTR(pb_rev_op_pb_int16_pb_register)
-    case COMMON_INSTR(pb_rev_op_pb_uint16_pb_register)
-    case COMMON_INSTR(pb_rev_op_pb_int32_pb_register)
-    case COMMON_INSTR(pb_rev_op_pb_uint32_pb_register)
-    case COMMON_INSTR(pb_rev_op_pb_int64_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_int8_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_int8_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_uint8_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_uint8_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_int16_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_int16_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_uint16_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_uint16_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_int32_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_int32_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_uint32_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_uint32_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_int64_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_int64_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_double_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_double_pb_immediate)
-    case COMMON_INSTR(pb_ld_op_pb_single_pb_register)
-    case COMMON_INSTR(pb_ld_op_pb_single_pb_immediate)
-    case COMMON_INSTR(pb_st_op_pb_int8_pb_register)
-    case COMMON_INSTR(pb_st_op_pb_int8_pb_immediate)
-    case COMMON_INSTR(pb_st_op_pb_int16_pb_register)
-    case COMMON_INSTR(pb_st_op_pb_int16_pb_immediate)
-    case COMMON_INSTR(pb_st_op_pb_int32_pb_register)
-    case COMMON_INSTR(pb_st_op_pb_int32_pb_immediate)
-    case COMMON_INSTR(pb_st_op_pb_int64_pb_register)
-    case COMMON_INSTR(pb_st_op_pb_int64_pb_immediate)
-    case COMMON_INSTR(pb_st_op_pb_double_pb_register)
-    case COMMON_INSTR(pb_st_op_pb_double_pb_immediate)
-    case COMMON_INSTR(pb_st_op_pb_single_pb_register)
-    case COMMON_INSTR(pb_st_op_pb_single_pb_immediate)
+    case COMMON_INSTR(pb_mov_pb_s_d, 0xB2)
+    case COMMON_INSTR(pb_mov_pb_d_s, 0xB3)
+    case COMMON_INSTR(pb_mov_pb_d_s_d, 0xB4)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_add_pb_register, 0xB5)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_add_pb_immediate, 0xB6)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_sub_pb_register, 0xB7)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_sub_pb_immediate, 0xB8)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_mul_pb_register, 0xB9)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_mul_pb_immediate, 0xBA)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_div_pb_register, 0xBB)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_div_pb_immediate, 0xBC)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_and_pb_register, 0xBD)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_and_pb_immediate, 0xBE)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_ior_pb_register, 0xBF)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_ior_pb_immediate, 0xC0)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_xor_pb_register, 0xC1)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_xor_pb_immediate, 0xC2)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsl_pb_register, 0xC3)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsl_pb_immediate, 0xC4)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsr_pb_register, 0xC5)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lsr_pb_immediate, 0xC6)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_asr_pb_register, 0xC7)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_asr_pb_immediate, 0xC8)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lslo_pb_register, 0xC9)
+    case COMMON_INSTR(pb_bin_op_pb_no_signal_pb_lslo_pb_immediate, 0xCA)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_add_pb_register, 0xCB)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_add_pb_immediate, 0xCC)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_sub_pb_register, 0xCD)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_sub_pb_immediate, 0xCE)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_mul_pb_register, 0xCF)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_mul_pb_immediate, 0xD0)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subz_pb_register, 0xD1)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subz_pb_immediate, 0xD2)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subp_pb_register, 0xD3)
+    case COMMON_INSTR(pb_bin_op_pb_signal_pb_subp_pb_immediate, 0xD4)
+    case COMMON_INSTR(pb_cmp_op_pb_eq_pb_register, 0xD5)
+    case COMMON_INSTR(pb_cmp_op_pb_eq_pb_immediate, 0xD6)
+    case COMMON_INSTR(pb_cmp_op_pb_lt_pb_register, 0xD7)
+    case COMMON_INSTR(pb_cmp_op_pb_lt_pb_immediate, 0xD8)
+    case COMMON_INSTR(pb_cmp_op_pb_gt_pb_register, 0xD9)
+    case COMMON_INSTR(pb_cmp_op_pb_gt_pb_immediate, 0xDA)
+    case COMMON_INSTR(pb_cmp_op_pb_le_pb_register, 0xDB)
+    case COMMON_INSTR(pb_cmp_op_pb_le_pb_immediate, 0xDC)
+    case COMMON_INSTR(pb_cmp_op_pb_ge_pb_register, 0xDE)
+    case COMMON_INSTR(pb_cmp_op_pb_ge_pb_immediate, 0xDF)
+    case COMMON_INSTR(pb_cmp_op_pb_ab_pb_register, 0xF0)
+    case COMMON_INSTR(pb_cmp_op_pb_ab_pb_immediate, 0xF1)
+    case COMMON_INSTR(pb_cmp_op_pb_bl_pb_register, 0xF2)
+    case COMMON_INSTR(pb_cmp_op_pb_bl_pb_immediate, 0xF3)
+    case COMMON_INSTR(pb_cmp_op_pb_cs_pb_register, 0xF4)
+    case COMMON_INSTR(pb_cmp_op_pb_cs_pb_immediate, 0xF5)
+    case COMMON_INSTR(pb_cmp_op_pb_cc_pb_register, 0xF6)
+    case COMMON_INSTR(pb_cmp_op_pb_cc_pb_immediate, 0xF7)
+    case COMMON_INSTR(pb_fp_bin_op_pb_add_pb_register, 0xF8)
+    case COMMON_INSTR(pb_fp_bin_op_pb_sub_pb_register, 0xF9)
+    case COMMON_INSTR(pb_fp_bin_op_pb_mul_pb_register, 0xF10)
+    case COMMON_INSTR(pb_fp_bin_op_pb_div_pb_register, 0xFA)
+    case COMMON_INSTR(pb_un_op_pb_not_pb_register, 0xFB)
+    case COMMON_INSTR(pb_un_op_pb_not_pb_immediate, 0xFC)
+    case COMMON_INSTR(pb_fp_un_op_pb_sqrt_pb_register, 0xFD)
+    case COMMON_INSTR(pb_fp_cmp_op_pb_eq_pb_register, 0xFE)
+    case COMMON_INSTR(pb_fp_cmp_op_pb_lt_pb_register, 0xFF)
+    case COMMON_INSTR(pb_fp_cmp_op_pb_le_pb_register, 0x100)
+    case COMMON_INSTR(pb_rev_op_pb_int16_pb_register, 0x101)
+    case COMMON_INSTR(pb_rev_op_pb_uint16_pb_register, 0x102)
+    case COMMON_INSTR(pb_rev_op_pb_int32_pb_register, 0x103)
+    case COMMON_INSTR(pb_rev_op_pb_uint32_pb_register, 0x104)
+    case COMMON_INSTR(pb_rev_op_pb_int64_pb_register, 0x105)
+    case COMMON_INSTR(pb_ld_op_pb_int8_pb_register, 0x106)
+    case COMMON_INSTR(pb_ld_op_pb_int8_pb_immediate, 0x107)
+    case COMMON_INSTR(pb_ld_op_pb_uint8_pb_register, 0x108)
+    case COMMON_INSTR(pb_ld_op_pb_uint8_pb_immediate, 0x109)
+    case COMMON_INSTR(pb_ld_op_pb_int16_pb_register, 0x10A)
+    case COMMON_INSTR(pb_ld_op_pb_int16_pb_immediate, 0x10B)
+    case COMMON_INSTR(pb_ld_op_pb_uint16_pb_register, 0x10C)
+    case COMMON_INSTR(pb_ld_op_pb_uint16_pb_immediate, 0x10D)
+    case COMMON_INSTR(pb_ld_op_pb_int32_pb_register, 0x10E)
+    case COMMON_INSTR(pb_ld_op_pb_int32_pb_immediate, 0x10F)
+    case COMMON_INSTR(pb_ld_op_pb_uint32_pb_register, 0x110)
+    case COMMON_INSTR(pb_ld_op_pb_uint32_pb_immediate, 0x11A)
+    case COMMON_INSTR(pb_ld_op_pb_int64_pb_register, 0x11B)
+    case COMMON_INSTR(pb_ld_op_pb_int64_pb_immediate, 0x11C)
+    case COMMON_INSTR(pb_ld_op_pb_double_pb_register, 0x11D)
+    case COMMON_INSTR(pb_ld_op_pb_double_pb_immediate, 0x11E)
+    case COMMON_INSTR(pb_ld_op_pb_single_pb_register, 0x11F)
+    case COMMON_INSTR(pb_ld_op_pb_single_pb_immediate, 0x120)
+    case COMMON_INSTR(pb_st_op_pb_int8_pb_register, 0x121)
+    case COMMON_INSTR(pb_st_op_pb_int8_pb_immediate, 0x122)
+    case COMMON_INSTR(pb_st_op_pb_int16_pb_register, 0x123)
+    case COMMON_INSTR(pb_st_op_pb_int16_pb_immediate, 0x124)
+    case COMMON_INSTR(pb_st_op_pb_int32_pb_register, 0x125)
+    case COMMON_INSTR(pb_st_op_pb_int32_pb_immediate, 0x126)
+    case COMMON_INSTR(pb_st_op_pb_int64_pb_register, 0x127)
+    case COMMON_INSTR(pb_st_op_pb_int64_pb_immediate, 0x128)
+    case COMMON_INSTR(pb_st_op_pb_double_pb_register, 0x129)
+    case COMMON_INSTR(pb_st_op_pb_double_pb_immediate, 0x130)
+    case COMMON_INSTR(pb_st_op_pb_single_pb_register, 0x131)
+    case COMMON_INSTR(pb_st_op_pb_single_pb_immediate, 0x132)
     case pb_b_op_pb_fals_pb_register:
       if (!flag) {
         next_ip = (instruction_t *)TO_VOIDP(regs[INSTR_dr_reg(instr)]);
@@ -472,21 +487,30 @@ void S_pb_interp(ptr tc, void *bytecode) {
         }
       }
       break;
-    case COMMON_INSTR(pb_inc_pb_register)
-    case COMMON_INSTR(pb_inc_pb_immediate)
-    case COMMON_INSTR(pb_lock)
-    case COMMON_INSTR(pb_cas)
-    case COMMON_INSTR(pb_fence_pb_fence_store_store)
-    case COMMON_INSTR(pb_fence_pb_fence_acquire)
-    case COMMON_INSTR(pb_fence_pb_fence_release)
-    case COMMON_INSTR(pb_call_arena_in)
-    case COMMON_INSTR(pb_fp_call_arena_in)
-    case COMMON_INSTR(pb_call_arena_out)
-    case COMMON_INSTR(pb_fp_call_arena_out)
-    case COMMON_INSTR(pb_stack_call)
+    case COMMON_INSTR(pb_inc_pb_register, 0x133)
+    case COMMON_INSTR(pb_inc_pb_immediate, 0x134)
+    case COMMON_INSTR(pb_lock, 0x135)
+    case COMMON_INSTR(pb_cas, 0x136)
+    case COMMON_INSTR(pb_fence_pb_fence_store_store, 0x137)
+    case COMMON_INSTR(pb_fence_pb_fence_acquire, 0x138)
+    case COMMON_INSTR(pb_fence_pb_fence_release, 0x139)
+    case COMMON_INSTR(pb_call_arena_in, 0x13A)
+    case COMMON_INSTR(pb_fp_call_arena_in, 0x13B)
+    case COMMON_INSTR(pb_call_arena_out, 0x13C)
+    case COMMON_INSTR(pb_fp_call_arena_out, 0x13D)
+    case COMMON_INSTR(pb_stack_call, 0x13E)
     case pb_chunk:
       next_ip = TO_VOIDP((chunks[INSTR_ii_high(instr)])(ms, TO_PTR(ip), INSTR_ii_low(instr)));
       break;
+#ifdef WASM_PBCHUNK
+    case 229: // wasm_pb_chunk
+      printf("wasm_pb_chunk\n");
+      printf("instr_high: %d\n ", INSTR_ii_high(instr));
+      printf("current ip is: %p\n", ip);
+      next_ip = TO_VOIDP(wasm_do_jump(INSTR_ii_high(instr), ms, TO_PTR(ip)));
+      printf("next_ip is: %p\n", next_ip);
+      break;
+#endif
     default:
       S_error_abort("illegal pb instruction");
       break;

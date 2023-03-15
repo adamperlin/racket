@@ -259,6 +259,16 @@
   (bitwise-ior (constant pb-chunk)
                (bitwise-arithmetic-shift-left sub-index 8)
                (bitwise-arithmetic-shift-left index 16)))
+
+(define (make-wasm-chunk-instr index sub-index)
+  (unless (eqv? index (bitwise-and index #xFFFF))
+    ($oops 'pbchunk "chunk index ~a is too large" index))
+  (unless (eqv? sub-index (bitwise-and sub-index #xFF))
+    ($oops 'pbchunk "chunk sub-index ~a is too large" sub-index))
+  (bitwise-ior 229
+               (bitwise-arithmetic-shift-left sub-index 8)
+               (bitwise-arithmetic-shift-left index 16)))
+
 (define MAX-SUB-INDEXES 256)
 
 ;; expands to a binary search for the right case
@@ -619,7 +629,8 @@
 
                     (unless (empty-chunklet? c)
                       (emit-wasm-chunk-footer o)
-                      (bytevector-u32-set! bv (chunklet-start-i c) (make-chunk-instr index 0) (constant fasl-endianness)))
+                      (display "WRITING WASM PBCHUNK INSTRUCTION")
+                      (bytevector-u32-set! bv (chunklet-start-i c) (make-wasm-chunk-instr index 0) (constant fasl-endianness)))
                     (loop (cdr chunklets) (if (empty-chunklet? c) index (fx+ index 1))))]))]
             [else
               (display (format "here; else case\n"))

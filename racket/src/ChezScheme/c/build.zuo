@@ -84,11 +84,12 @@
   (define kernel-srcs
     ((add-extra-c-sources at-dir mboot)
      (map at-source kernel-src-files)))
-  (define kernel-srcobjs
-    (map (lambda (o) (at-dir (.c->.o (file-name-from-path o))))
-         kernel-srcs))
 
-  (define kernel-asm-files
+  (define kernel-srcobjs
+      (map (lambda (o) (at-dir (.c->.o (file-name-from-path o))))
+         kernel-srcs))
+  
+  (define kernel-asm-files 
     (if (glob-match? "*nt" (or (lookup 'defaultm) m))
 	(cond
           [(and msvc?
@@ -98,12 +99,31 @@
            (if msvc?
                (list "arm64nt-jump.asm")
                (list "arm64nt-jump.S"))]
+          [(string=? arch "pb")
+            ((add-extra-wasm-sources at-dir mboot) '())] 
           [else '()])
 	'()))
+
+  (define (.wat->.wasm .wat)
+    (unless (path-string? .wat) (arg-error '.wat->.wasm "path string" .wat))
+    (path-replace-extension .wat ".wasm"))
+
+  (define kernel-extra-wat-files
+    (if (glob-match? "*pb*" (or (lookup 'defaultm) m))
+      ((add-extra-wasm-sources at-dir mboot) '())
+      '()))
+  
+  (displayln kernel-extra-wat-files)
+
   (define kernel-asms
-    (map at-source kernel-asm-files))
+    (append kernel-extra-wat-files
+            (map at-source kernel-asm-files)))
+
   (define kernel-asmobjs
-    (map at-dir (map .c->.o (append kernel-asm-files))))
+    (append
+      (map at-dir (map (lambda (p) (.wat->.wasm (cdr (split-path p))))
+                                kernel-extra-wat-files))
+      (map at-dir (map .c->.o (append kernel-asm-files)))))
   
   (define kernel-objs
     (append kernel-srcobjs kernel-asmobjs))
@@ -223,6 +243,8 @@
       (if (equal? make "")
           "make"
           make)))
+  
+  (displayln kernel-srcs)
 
   (make-targets
    `([:target build (,exe ,petite-exe revision)
@@ -378,6 +400,10 @@
                              [(string=? arch "a6")
                               (shell/wait "ml64 /c /Cx /Fo"
                                           (string->shell .o)
+                                          (string->shell .asm))]
+                             [(glob-match? "*.wat" .asm)
+                              (shell/wait "wat2wasm -r -o"
+                                          (string->shell .o) 
                                           (string->shell .asm))]
                              [else (error "don't know how to assemble")]))])
             kernel-asms kernel-asmobjs)
@@ -565,6 +591,7 @@
 
 (define (get-preload-files config at-dir mboot)
   (define preload-files
+    
     (map (lambda (path)
            (if (relative-path? path)
                (at-dir "../.." path)
@@ -581,6 +608,8 @@
       (let ()
         (define boot-src-dir (find-boot-src-dir at-dir mboot))
         (define config-file (build-path boot-src-dir "Mf-config"))
+        (display "config-file: ")
+        (displayln config-file)
         (if (file-exists? config-file)
             (map (lambda (name)
                    (build-path boot-src-dir name))
@@ -618,6 +647,8 @@
 (define (add-extra-c-sources at-dir mboot)
   (define boot-src-dir (find-boot-src-dir at-dir mboot))
   (define config-file (build-path boot-src-dir "Mf-config"))
+  (display "config file 2: ")
+  (displayln config-file)
   (lambda (l)
      (if (file-exists? config-file)
          (append
@@ -625,6 +656,18 @@
           (map (lambda (name)
                  (build-path boot-src-dir name))
                (shell->strings (hash-ref (config-file->hash config-file) 'extraCSources ""))))
+         l)))
+
+(define (add-extra-wasm-sources at-dir mboot)
+  (define boot-src-dir (find-boot-src-dir at-dir mboot))
+  (define config-file (build-path boot-src-dir "Mf-config"))
+  (lambda (l)
+     (if (file-exists? config-file)
+         (append
+          l
+          (map (lambda (name)
+                 (build-path boot-src-dir name))
+               (shell->strings (hash-ref (config-file->hash config-file) 'extraWasmSources ""))))
          l)))
 
 (define (need-pbchunk-register? config at-dir mboot)
