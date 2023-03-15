@@ -285,8 +285,10 @@
           eq-hash-code
           eqv-hash-code
           equal-hash-code
+          equal-hash-code/recur
           equal-secondary-hash-code
           equal-always-hash-code
+          equal-always-hash-code/recur
           equal-always-secondary-hash-code
 
           hash hasheqv hasheq hashalw
@@ -375,7 +377,7 @@
                   [inline:vector-set! vector-set!])
           vector-copy
           vector-copy!
-          vector-immutable
+          (rename [inline:vector-immutable vector-immutable])
           vector->values
           vector-fill!
           vector->immutable-vector

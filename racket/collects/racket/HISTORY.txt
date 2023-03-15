@@ -1,3 +1,7 @@
+Version 8.9
+Use Unicode 15.0 for character and string operations
+Block buffering for a TCP output port implies TCP_NODELAY
+
 Version 8.8, January 2023
 Add `#:param` option to `->i`
 Extend `copy-file` with permission-management arguments

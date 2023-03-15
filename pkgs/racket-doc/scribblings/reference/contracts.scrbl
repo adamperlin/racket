@@ -1664,14 +1664,19 @@ be blamed using the above contract:
 ]}
 
 @defthing[predicate/c contract?]{
-  Use this contract to indicate that some function
-  is a predicate. It is semantically equivalent to
-  @racket[(-> any/c boolean?)].
+
+ Use this contract to indicate that some function is a
+ predicate.
 
   This contract also includes an optimization so that functions returning
   @racket[#t] from @racket[struct-predicate-procedure?] are just returned directly, without
   being wrapped. This contract is used by @racket[provide/contract]'s
   @racket[struct] sub-form so that struct predicates end up not being wrapped.
+
+ This contract is semantically equivalent to
+ @racket[(-> any/c boolean?)] and
+ @racket[(-> any/c boolean?)] also has the same optimization.
+
 }
 
 @defthing[the-unsupplied-arg unsupplied-arg?]{
@@ -1943,6 +1948,19 @@ Specifically, the symbol @indexed-racket['provide/contract-original-contract]
 is bound to vectors of two elements, the exported identifier and a
 syntax object for the expression that produces the contract controlling
 the export.
+
+@examples[#:eval (contract-eval) #:once
+          (module math-example racket/base
+            (require racket/contract)
+            (code:comment "Compute the reciprocal of a real number")
+            (define (recip x) (/ 1 x))
+            (provide
+             (contract-out
+              [recip (-> (and/c real? (not/c zero?)) real?)])))
+
+          (require 'math-example)
+          (recip 3)
+          (eval:error (recip 1+2i))]
 
 @history[#:changed "7.3.0.3" @list{Added @racket[#:unprotected-submodule].}
          #:changed "7.7.0.9" @list{Started ignoring @racket[ignored-id].}]

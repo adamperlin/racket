@@ -6,13 +6,13 @@
                      racket/list
                      racket/struct-info
                      racket/syntax
-                     syntax/struct
+                     syntax/parse/pre
+                     syntax/private/struct
                      syntax/stx
                      "exptime/import-export.rkt"
                      "exptime/signature.rkt")
          racket/contract/base
          (rename-in racket/private/struct [struct struct~])
-         syntax/parse/define
          "keywords.rkt"
          "util.rkt")
 
@@ -155,10 +155,9 @@
                   (flatten (list (attribute elems.var-id)
                                  (attribute elems.val-def-id)
                                  (attribute elems.stx-def-id)
-                                 ; Why not also `elem.post-val-def-id`? I’m not quite
-                                 ; sure, but it breaks `struct` in signature forms if
-                                 ; those identifiers are included in this check.
-                                 ; Something to look into.
+                                 ; Why not also `elem.post-val-def-id`? Because export
+                                 ; definitions don’t conflict with signature elements, see
+                                 ; Note [Generated export definitions] in "exptime/signature.rkt".
                                  )))
                  "duplicate identifier"
      #:with signature-tag-id (generate-temporary #'sig-id)
@@ -182,8 +181,7 @@
                   (list (cons (list (quote-syntax elems.post-val-def-id) ...)
                               (quote-syntax elems.post-val-def-rhs))
                         ...)
-                  (list {~? (quote-syntax elems.ctc) #f} ...)
-                  (quote-syntax sig-id)))))
+                  (list {~? (quote-syntax elems.ctc) #f} ...)))))
          ;; dummy expression for Check Syntax:
          (define-values ()
            (begin
@@ -196,30 +194,31 @@
                  (void)))
              (values))))]))
 
-(define-syntax-parser provide-signature-elements
-  #:track-literals
-  [(_ spec:import-spec ...)
-   (define nameses (map signature-ie-int-names (attribute spec.value)))
-   ;; Export only the names that would be visible to uses
-   ;;  with the same lexical context as p. Otherwise, we
-   ;;  can end up with collisions with renamings that are
-   ;;  symbolically the same, such as those introduced by
-   ;;  `open'.
-   (define names
-     (append* (for/list ([sig-stx (in-list (attribute spec))]
-                         [names (in-list nameses)])
-                (filter (lambda (name)
-                          (bound-identifier=?
-                           name
-                           (datum->syntax sig-stx (syntax-e name))))
-                        names))))
+(define-syntax provide-signature-elements
+  (syntax-parser
+    #:track-literals
+    [(_ spec:import-spec ...)
+     (define nameses (map signature-ie-int-names (attribute spec.value)))
+     ;; Export only the names that would be visible to uses
+     ;;  with the same lexical context as p. Otherwise, we
+     ;;  can end up with collisions with renamings that are
+     ;;  symbolically the same, such as those introduced by
+     ;;  `open'.
+     (define names
+       (append* (for/list ([sig-stx (in-list (attribute spec))]
+                           [names (in-list nameses)])
+                  (filter (lambda (name)
+                            (bound-identifier=?
+                             name
+                             (datum->syntax sig-stx (syntax-e name))))
+                          names))))
 
-   (define dup (check-duplicate-identifier names))
-   (when dup
-     (raise-stx-err (format "duplicate binding for ~.s" (syntax-e dup))))
+     (define dup (check-duplicate-identifier names))
+     (when dup
+       (raise-stx-err (format "duplicate binding for ~.s" (syntax-e dup))))
 
-   (quasisyntax/loc this-syntax
-     (provide #,@names))])
+     (quasisyntax/loc this-syntax
+       (provide #,@names))]))
 
 ;; -----------------------------------------------------------------------------
 ;; signature forms
@@ -265,26 +264,23 @@
   (raise-syntax-error #f "internal error" stx))
 
 (define-signature-form (open stx enclosing-intro)
-  (define (build-sig-elems ps cs)
-    (map (λ (p c)
-           (if (syntax-e c)
-               #`(contracted [#,(car p) #,(cdr (syntax-e c))])
-               (car p)))
-         ps
-         cs))
   (syntax-parse stx
     [(_ spec:export-spec)
      (define sig (attribute spec.value))
      (define/syntax-parse [rename-bind [stx-bind ...] [val-bind ...]] ((build-val+macro-defs enclosing-intro) sig))
-     (define/syntax-parse ([post-rhs ...] [ctc ...]) (build-post-val-defs+ctcs sig))
-     (define/syntax-parse [sig-elem ...] (build-sig-elems (signature-vars sig) (attribute ctc)))
-     (define/syntax-parse (post-ids ...) (map car (signature-post-val-defs sig)))
+     (define-values [post-rhss ctcs] (build-post-val-defs+ctcs sig))
+     (define/syntax-parse [post-rhs ...] post-rhss)
+     (define/syntax-parse [sig-elem ...] (for/list ([int-id (in-list (attribute spec.var.int-id))]
+                                                    [ctc (in-list ctcs)])
+                                           (if ctc
+                                               #`(contracted [#,int-id #,ctc])
+                                               int-id)))
      (syntax->list
-      #'(sig-elem ...
+      #'[sig-elem ...
          (define-syntaxes . rename-bind)
          (define-syntaxes . stx-bind) ...
          (define-values . val-bind) ...
-         (define-values-for-export post-ids post-rhs) ...))]))
+         (define-values-for-export [spec.post-def.id ...] post-rhs) ...])]))
 
 (begin-for-syntax
  (define-struct self-name-struct-info (id)
