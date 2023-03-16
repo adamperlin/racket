@@ -407,7 +407,7 @@ fi
 
 if [ $emscripten = yes ] ; then
     pb=yes
-    threads=no
+    threads=yes
     bits=64
     if [ "$m" != "" ] ; then
         echo "Don't combine --emscripten with -m or --machine"
@@ -619,7 +619,7 @@ optFlags=-O2
 
 if [ "$emscripten" = "yes" ]; then
     flagsm=em
-    #threads=no
+    #threads=yes
     buildKernelOnly=yes
     disableiconv=yes
     disablecurses=yes
