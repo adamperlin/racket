@@ -36,6 +36,32 @@ void S_machine_init() { }
 
 #endif
 
+const char *reg_names[] = {
+  "tc",
+  "sfp",
+  "ap",
+  "trap",
+  "ac0",
+  "xp",
+  "ts",
+  "td",
+  "cp",
+  "r9",
+  "r10",
+  "r11",
+  "r12",
+  "r13",
+  "r14",
+  "r15"
+};
+
+void dump_machine_state(machine_state *ms) {
+  printf("| registers |\n");
+  for (int i = 0; i < pb_reg_count; i++) {
+    printf("\t%s = %llx\n", reg_names[i], ms->machine_regs[i]);
+  }
+}
+
 void Sregister_pbchunks(void **add_chunks, int start_index, int end_index) {
   if (num_chunks < end_index) {
     void *new_chunks = malloc(sizeof(void*) * end_index);
@@ -82,7 +108,7 @@ void S_pb_interp(ptr tc, void *bytecode) {
     case pb_nop:
       break;
     case pb_literal:
-      regs[INSTR_di_dest(instr)] = (ptr)LOAD_UNALIGNED_UPTR(ip + 1);
+      regs[INSTR_di_dest(instr)] = (ptr)LOAD_UNALIGNED_UPTR(ip + 1); 
 #if ptr_bits == 64
       next_ip = ip + 3;
 #else
@@ -507,8 +533,10 @@ void S_pb_interp(ptr tc, void *bytecode) {
       printf("wasm_pb_chunk\n");
       printf("instr_high: %d\n ", INSTR_ii_high(instr));
       printf("current ip is: %p\n", ip);
+      dump_machine_state(ms);
       next_ip = TO_VOIDP(wasm_do_jump(INSTR_ii_high(instr), ms, TO_PTR(ip)));
       printf("next_ip is: %p\n", next_ip);
+      dump_machine_state(ms);
       break;
 #endif
     default:

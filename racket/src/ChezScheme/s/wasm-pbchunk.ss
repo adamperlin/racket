@@ -873,12 +873,13 @@
 
 (define (emit-wasm-chunk-header o index sub-index? uses-flag?)
   (fprintf o 
-    "(func $chunk_~a
-        (param $ms i32)
-        (param $ip i32)
-        (result i32)
-        ~a"
+    "(func $chunk_~a (export \"chunk_~a\")
+      (param $ms i32)
+      (param $ip i32)
+      (result i32)
+      ~a"
         index 
+        index
         (if uses-flag? "(local $flag i32)\n" "")))
   
 (define (emit-wasm-chunk-footer o)
@@ -1144,7 +1145,7 @@
                 [(_ op r/b test)
                   #'(r/b-form 'op (lambda ()
                           (emit-pb-b-pb-register 
-                            (instr-d-dest instr)
+                            (instr-dr-reg instr)
                             (code-rel base-i (fx+ i instr-bytes))
                             '$ms
                             test)))]
@@ -1231,10 +1232,12 @@
                     (unless (and (pair? relocs)
                                  (fx= (fx+ i instr-bytes) (car relocs)))
                       ($oops 'pbchunk "no relocation after pb-literal?"))
+                      (display (format "literal loading from: ~a\n" (fx+ i instr-bytes)))
                       (let ([gen (append generated 
+                                  `((comment . ,(format ";; literal r~a" (instr-di-dest instr))))
                                   (emit-pb-literal 
                                         dest '$ms 
-                                        (constant ptr-bytes) 
+                                        (constant ptr-bytes)
                                         (code-rel base-i (fx+ i instr-bytes))))])
                         (loop (fx+ i instr-bytes (constant ptr-bytes)) (cdr relocs) headers labels gen)))]
                

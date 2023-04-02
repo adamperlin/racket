@@ -33,6 +33,7 @@
         (local.set ,tmp)))
     
   (define pb-num-regs 16)
+  (define pb-instr-num-bytes 4)
     
   (define (generate-fpregs-lhs fp-dest ms reg-size out)
     `(
@@ -536,21 +537,30 @@
     (wasm-emit
       (local $_0 i64)
       ,(load-from-reg base ms '$_0)
+
       (local.get $_0)
       (i32.wrap_i64)
       (i32.const ,target-offset)
       (i32.add)
+
+      ; load from target address, 
+      ; and wrap into i32, as we are operating in 32-bit address space
+      (i64.load)
+      (i32.wrap_i64)
+
       (return)))
   
   (define (emit-pb-b-pb-immediate target-offset next-instr ms test)
     (wasm-emit
       ,(if (null? test) '(i32.const 1) test)
       (if 
+        (then
           (return (i32.add (local.get $ip)
-                    (i32.const ,target-offset)))
+                    (i32.const ,target-offset))))
+        (else
           (return (i32.add 
                     (local.get $ip) 
-                    (i32.const ,next-instr))))))
+                    (i32.const ,next-instr)))))))
   
   (define (emit-pb-b-pb-register reg next-instr ms test)
     (wasm-emit

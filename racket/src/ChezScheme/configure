@@ -407,7 +407,7 @@ fi
 
 if [ $emscripten = yes ] ; then
     pb=yes
-    threads=yes
+    #threads=yes
     bits=64
     if [ "$m" != "" ] ; then
         echo "Don't combine --emscripten with -m or --machine"
@@ -699,7 +699,7 @@ if [ "$cflagsset" = "no" ] ; then
         CFLAGS="-mabi=lp64d ${optFlags}"
         ;;
     em)
-        CFLAGS="${optFlags} -DWASM_PBCHUNK -DCALL_WASM_PBCHUNK_REGISTER"
+        CFLAGS="${optFlags} -g -DWASM_PBCHUNK -DCALL_WASM_PBCHUNK_REGISTER"
         ;;
     *)
         CFLAGS="${optFlags}"
