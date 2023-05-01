@@ -18,6 +18,12 @@
                 (return i))))
             (loop (+ 1 i)))))
       do-iter))
+  
+  (define (load-for-size n) 
+    (case 
+      [(4) 'i32.load]
+      [(8) 'i64.load]
+      [else ($oops 'wasm-emit "invalid word size ~a" n)]))
 
   (define (shift-for-size size)
     (flonum->fixnum (log size 2)))
@@ -84,7 +90,7 @@
           [(1) `((i32.const ,imm-unsigned) (i32.const 16) (i32.shl))]
           [(2) `((i32.const ,imm-unsigned) (i32.const 32) (i32.shl))]
           [(3) `((i32.const ,imm-unsigned) '(i32.const 48) '(i32.shl))])
-          (i64.extend_i32_u)
+          (i64.extend_i32_s)
           (i64.store)))
 
   (define (emit-pb-mov16-pb-keep-bits-pb-shift dest imm-unsigned shift ms)
@@ -98,7 +104,7 @@
           [(1) `((i32.const ,imm-unsigned) (i32.const 16) (i32.shl))]
           [(2) `((i32.const ,imm-unsigned) (i32.const 32) (i32.shl))]
           [(3) `((i32.const ,imm-unsigned) (i32.const 48) (i32.shl))])
-      (i64.extend_i32_u)
+      (i64.extend_i32_s)
       (local.set $_1)
 
       ,(load-and-set '$_0 '$_2)
@@ -268,7 +274,7 @@
     (wasm-emit
       (local $_0 f64)
       (local $_1 i32)
-      (load-from-fpreg fpreg ms '$_0)
+      ,(load-from-fpreg fpreg ms '$_0)
       ,(generate-fpregs-lhs fpreg ms 8 '$_1)
 
       (local.get $_1)
@@ -297,10 +303,11 @@
         [(lsl) '(i64.shl)]
         [(lsr) '(i64.shr_u)]
         [(asr) '(i64.shr_s)]
+        [else (unimplemented op)]
         ; TODO: lslo implementations
       )))
 
-  (define (do-pb-bin-op-pb-no-signal-pb-register dest reg1 reg2 ms op)
+  (define (emit-pb-bin-op-pb-no-signal-pb-register dest reg1 reg2 ms op)
     (wasm-emit
       (local $_0 i64)
       (local $_1 i64)
@@ -315,16 +322,19 @@
       ; store to perform assignment
       (i64.store)))
 
-  (define (do-pb-bin-op-pb-no-signal-pb-immediate dest reg imm ms op)
+  (define (emit-pb-bin-op-pb-no-signal-pb-immediate dest reg imm ms op)
     (wasm-emit
       (local $_0 i64)
       (local $_1 i64)
       (local $_2 i32)
 
       ,(load-from-reg reg ms '$_0)
-      (i32.const imm)
-      (i64.extend_i32_u)
-      (local.set '$_1)
+      (i32.const ,imm)
+
+      ; sign extension of the immediate is crucial here, as we need the equivalent
+      ; signed value to add to a register of larger size
+      (i64.extend_i32_s)
+      (local.set $_1)
       ,(generate-regs-lhs dest ms 8 '$_2)
 
       ; load address to store to
@@ -345,7 +355,6 @@
       (local.get ,op1) 
       (local.get ,op2)
       ,(case op
-        [(add) (unimplemented 'add-signal)]
         [(subz) `(
           (i64.sub)
           (local.set ,result)
@@ -358,9 +367,86 @@
           (i64.gt_s)
           (local.set ,flag)
           (local.set ,result))]
-        [(mul) (unimplemented 'mul-signal)]
-        [(div) (unimplemented 'div-signal)])))
+        [(sub) (do-pb-sub-pb-signal op1 op2 result flag)]
+        [(mul) (do-pb-mul-pb-signal op1 op2 result flag)]
+        [(add) (do-pb-add-pb-signal op1 op2 result flag)]
+        [(div) (unimplemented 'div-signal)]
+        [else (unimplemented op)])))
 
+  ; wasm does not have a bitwise not instruction, but
+  ;; (num_type.xor $a (num_type.const -1)) has the same effect, where -1 = 0xffffff..
+  (define-syntax wasm-not
+    (syntax-rules ()
+      [(_ x) `(i64.xor x (i64.const -1))]))
+
+  ;; SIGN_FLIP(r, a, b) ((~((a ^ b) | (r ^ ~b))) >> (ptr_bits-1))
+  (define-syntax sign-flip
+    (syntax-rules ()
+      [(_ r a b)
+        `(i64.shr_u
+          ,(wasm-not 
+            (i64.or
+              (i64.xor a b)
+                (i64.xor r ,(wasm-not b)))) (i64.const 63))]))
+
+  (define (do-pb-sub-pb-signal op1 op2 result flag)
+    (wasm-emit (scope '@)
+      (local @_a i64)
+      (local @_b i64)
+      (local @_r i64)
+
+      (local.set @_r (i64.sub (local.get ,op1) (local.get,op2)))
+      (local.set @_a (local.get ,op1))
+      (local.set @_b (local.get ,op2))
+
+      (local.set ,flag (i32.wrap_i64 ,(sign-flip (local.get @_r) (local.get @_a) (local.get @_b))))
+      (local.set ,result (local.get @_r))))
+  
+  (define (do-pb-add-pb-signal op1 op2 result flag)
+    (wasm-emit (scope '@)
+      (local @_a i64)
+      (local @_b i64)
+      (local @_r i64)
+
+      (local.set @_r (i64.add (local.get ,op1) (local.get,op2)))
+      (local.set @_a (local.get ,op1))
+      (local.set @_b (local.get ,op2))
+
+      (local.set ,flag (i32.wrap_i64 ,(sign-flip (local.get @_r) (local.get @_a) (local.get @_b))))
+      (local.set ,result (local.get @_r))))
+
+
+  (define (do-pb-mul-pb-signal op1 op2 result flag)
+    (wasm-emit (scope '@)
+      (local @_0 i64)
+      (local.set @_0
+        (i64.mul
+          (local.get ,op1)
+          (local.get ,op2)))
+      
+    
+      (if (i64.eqz (local.get ,op2))
+          ;; b == 0
+          (then
+              (local.set $flag (i32.const 0)))
+          ;; b != 0
+          (else
+              ;; if b == -1
+              (if (i64.eq (local.get ,op2) (i64.const -1))
+                  (then 
+                      ;; flag = a != r * -1
+                      (local.set ,flag
+                          (i64.ne
+                              (local.get ,op1) 
+                              (i64.mul (local.get @_0) (i64.const -1)))))
+                  (else
+                      ;; flag = a != (signed) r / (signed b)
+                      (local.set ,flag
+                          (i64.ne
+                              (local.get ,op1) 
+                              (i64.sdiv (local.get @_0) (local.get ,op2))))))))
+      (local.set ,result (local.get @_0))))
+                              
   (define (emit-pb-binop-signal-pb-register dest reg1 reg2 ms flag op)
       (wasm-emit
         (local $_0 i64)
@@ -386,7 +472,7 @@
         ,(load-from-reg reg ms '$_0)
 
         (i32.const ,imm)
-        (i64.extend_i32_u)
+        (i64.extend_i32_s)
         (local.set $_1)
 
         ,(generate-regs-lhs dest ms 8 '$_2)
@@ -416,7 +502,8 @@
         [(cc) '(
           (i64.and)
           (i64.const 0)
-          (i64.eq))])))
+          (i64.eq))]
+        [else (unimplemented op)])))
 
   (define (emit-pb-cmp-op-pb-register reg1 reg2 ms cmp-op flag)
     (wasm-emit
@@ -435,7 +522,7 @@
       ,(load-from-reg reg ms '$_0)
 
       (i32.const ,imm)
-      (i64.extend_i32_u)
+      (i64.extend_i32_s)
       (local.set $_1)
 
       ,(do-pb-cmp-op-no-signal cmp-op '$_0 '$_1)
@@ -486,6 +573,23 @@
           (unless (equal? dest-type 'f64)
             ($oops 'wasm-emit "incompatible load type ~a for ~a" src-type dest-type))
           'load)]))
+  
+  (define (pb-st-type->wasm-st-type src-type word-size)
+    (case src-type
+      [(int8) 'store8]
+      [(int16) 'store16]
+      [(int32) (if (equal? word-size 4) 'store 'store32)]
+      [(int64) 
+        (begin
+          (unless (equal? word-size 8)
+            ($oops 'wasm-emit "incompatible store type ~a for word size ~a" src-type word-size))
+          'store)]
+      [(single) 'store]
+      [(double) 
+        (begin
+          (unless (equal? word-size 8)
+            ($oops 'wasm-emit "incompatible store type ~a for word size ~a" src-type word-size))
+          'store)]))
 
    (define (word-size->val-type word-size)
     (case word-size
@@ -516,7 +620,7 @@
       (local $_0 i32)
       (local $_1 i64)
       (local $_2 ,dest-type)
-      ,(if (or (equal? dest-type 'single) (equal? dest-type 'double))
+      ,(if (or (equal? dest-type 'f32) (equal? dest-type 'f64))
          (generate-fpregs-lhs dest ms word-size '$_0)
          (generate-regs-lhs dest ms word-size '$_0))
       ,(load-from-reg base ms '$_1)
@@ -530,6 +634,32 @@
 
       (local.get $_0)
       (local.get $_2)
+
+      (,store-op)))
+  
+  (define (emit-pb-st-pb-immediate dest base imm ms src-type word-size)
+    (define reg-type (word-size->dest-type word-size (is-fp? src-type)))
+    (define st-type (pb-st-type->wasm-st-type src-type word-size))
+
+    (define store-op (string->symbol (format "~a.~a" reg-type st-type)))
+
+    (wasm-emit 
+      ; value to store
+      (local $_0 ,reg-type)
+
+      ; base address
+      (local $_1 i64)
+      ,(if (or (equal? reg-type 'f32) (equal? reg-type 'f64))
+        (load-from-fpreg dest ms '$_0)
+        (load-from-reg dest ms '$_0))
+      
+      ,(load-from-reg base ms '$_1)
+      (local.get $_1)
+      (i32.wrap_i64)
+      (i32.const ,imm)
+      (i32.add)
+
+      (local.get $_0)
 
       (,store-op)))
   
@@ -576,6 +706,32 @@
               (return)))
         (else (return (i32.add (local.get $ip) 
                         (i32.const ,next-instr)))))))
+  
+  (define (emit-pb-adr dest ms imm next-instr)
+    (wasm-emit 
+      (local $_0 i32)
+      (local $_1 i32)
+      ,(generate-regs-lhs dest ms 8 '$_0)
+
+      (local.get $ip)
+      (i32.const ,next-instr)
+      (i32.add)
+
+      (i32.const ,imm)
+      (i32.const 2)
+      (i32.shl)
+
+      (i32.add)
+      (local.set $_1)
+
+      (local.get $_0)
+      (local.get $_1)
+
+      ; address is unsigned, we do not want to sign-extend when
+      ; converting to i64
+      (i64.extend_i32_u)
+
+      (i64.store)))
   
   (define (format-with-newlines wasm-sexp)
     (fold-left 

@@ -530,13 +530,13 @@ void S_pb_interp(ptr tc, void *bytecode) {
       break;
 #ifdef WASM_PBCHUNK
     case 229: // wasm_pb_chunk
-      printf("wasm_pb_chunk\n");
-      printf("instr_high: %d\n ", INSTR_ii_high(instr));
-      printf("current ip is: %p\n", ip);
-      dump_machine_state(ms);
+     //printf("wasm_pb_chunk\n");
+     //printf("instr_high: %d\n ", INSTR_ii_high(instr));
+      //printf("current ip is: %p\n", ip);
+      //dump_machine_state(ms);
       next_ip = TO_VOIDP(wasm_do_jump(INSTR_ii_high(instr), ms, TO_PTR(ip)));
-      printf("next_ip is: %p\n", next_ip);
-      dump_machine_state(ms);
+      //printf("next_ip is: %p\n", next_ip);
+      //dump_machine_state(ms);
       break;
 #endif
     default:

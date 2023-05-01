@@ -8,9 +8,18 @@
     (error who "missing arguments"))
 
 (define srcfile (car args))
-(define destdir (cadr args))
+(define dest (cadr args))
+(define arch (caddr args))
+(define only-funcs (cdddr args))
 
-(display (format "srcfile is ~a\n" srcfile))
+(printf "srcfile:  ~a\n" srcfile)
+(printf "dest-dir: ~a\n" dest)
+(printf "arch: ~a\n" arch)
+(printf "funcs: ~a" only-funcs)
+
+(when (null? only-funcs)
+  (error who "must provide at least one function to be chunked"))
+
 ; (when (null? args)
 ;   (error who "missing srcdir"))
 ; (when (null? (cdr args))
@@ -73,13 +82,11 @@
 ;             (file-exists? xpatch))
 ;   (error who "cannot find cross patch file ~s" xpatch))
 
-
 ; (for-each (lambda (f)
 ;             (unless (file-exists? f)
 ;               (error who "file not found: ~s" f)))
 ;           '(srcfile))
 (define boots (list srcfile))
-(define dest destdir)
 (for-each (lambda (f)
             (delete-file (string-append dest "/" f)))
           (directory-list dest))
@@ -96,48 +103,10 @@
     (close-input-port i)
     (close-output-port o)))
 
-; (for-each (lambda (f)
-;             (unless (member f boots)
-;               (copy-file f)))
-;           (directory-list src))
-
-
-
-; (define src-boots (append (map (lambda (f) (string-append src "/" f))
-;                                boots)
-;                           '(srcfile)))
-
-
 (define dest-boots (append (map (lambda (f) (string-append dest "/" (path-last f)))
                                 boots)))
 (define src-boots boots)
-(define only-funcs '("add3"))
 
-(define (extract-boot-name f)
-  (list->string
-   (let loop ([l (string->list (path-last f))])
-     (cond
-       [(null? l) '()]
-       [(eqv? #\. (car l)) '()]
-       [else (cons (car l) (loop (cdr l)))]))))
-
-(define (many fmt)
-  (let loop ([i 0])
-    (if (eqv? i 10)
-        '()
-        (cons (format fmt i) (loop (add1 i))))))
-
-; (when xpatch
-;   (load xpatch))
-
-; (let ([o (open-file-output-port (string-append dest "/" "Mf-config")
-;                                 (file-options no-fail)
-;                                 (buffer-mode block)
-;                                 (current-transcoder))])
-;   (fprintf o "extraBootFiles=~a\n"
-;            (apply string-append
-;                   (map (lambda (path) (format "\"~a\" " (path-last path)))
-;                        more-boots)))
 ;   (fprintf o "extraCSources=~a~a\n"
 ;            (apply string-append
 ;                   (apply append
@@ -148,40 +117,48 @@
 ;            "pbchunk_register.c")
 ;   (close-port o))
 
-(let loop ([src-boots src-boots]
-           [dest-boots dest-boots]
-           [index 0]
-           [c-files '()]
-           [reg-names '()])
-  (cond
-    [(null? src-boots)
-     (let ([o (open-file-output-port (string-append dest "/" "pbchunk_register.c")
-                                     (file-options no-fail)
-                                     (buffer-mode block)
-                                     (current-transcoder))])
-       (for-each (lambda (reg-name)
-                   (fprintf o "extern void ~a();\n" reg-name))
-                 reg-names)
-       (fprintf o "\nvoid pbchunk_register() {\n")
-       (fprintf o "  /* last first, since last reflects overall size */\n")
-       (for-each (lambda (reg-name)
-                   (fprintf o "  ~a();\n" reg-name))
-                 reg-names)
-       (fprintf o "}\n")
-       (close-output-port o))]
-    [else
-     (printf "Convert ~s\n" (car src-boots))
-     (let ([name (extract-boot-name (car src-boots))])
-       (let ([new-c-files (many (string-append dest "/" "pbchunk_" name "~a.wat"))]
-             [new-reg-names (many (string-append "pbchunk_register_" name "~a"))])
-         (let ([index (wasm-pbchunk-convert-file (car src-boots)
-                                            (car dest-boots)
-                                            new-c-files
-                                            new-reg-names
-                                            index
-                                            only-funcs)])
-           (loop (cdr src-boots)
-                 (cdr dest-boots)
-                 index
-                 (append (reverse new-c-files) c-files) 
-                 (append (reverse new-reg-names) reg-names)))))]))
+(define (extract-boot-name f)
+  (list->string
+   (let loop ([l (string->list (path-last f))])
+     (cond
+       [(null? l) '()]
+       [(eqv? #\. (car l)) '()]
+       [else (cons (car l) (loop (cdr l)))]))))
+
+(define (format-with-index fmt)
+  (let loop ([i 0])
+    (if (eqv? i 10)
+        '()
+        (cons (format fmt i) (loop (add1 i))))))
+
+(define (do-wasm-pbchunk src-boots dest-boots)
+  (let loop ([src-boots src-boots]
+             [dest-boots dest-boots]
+             [index 0]
+             [wat-files '()])
+    (cond
+      [(null? src-boots) wat-files]
+      [else
+        (printf "Convert ~s\n" (car src-boots))
+        (let ([name (extract-boot-name (car src-boots))])
+          (let ([new-wat-file (format (string-append dest "/" "pbchunk_" name "~a.wat") index)])
+            (let ([index (wasm-pbchunk-convert-file 
+                                              (car src-boots)
+                                              (car dest-boots)
+                                              new-wat-file
+                                              index
+                                              only-funcs)])
+              (loop (cdr src-boots)
+                    (cdr dest-boots)
+                    index
+                    (append wat-files (list new-wat-file))))))])))
+  
+(define new-wat-files (do-wasm-pbchunk src-boots dest-boots))
+(let ([o (open-file-output-port (format "boot/~a/Mf-config" arch)
+                                (file-options no-fail)
+                                (buffer-mode block)
+                                (current-transcoder))])
+  (fprintf o "extraWasmSources=~a\n"
+           (apply string-append
+                  (map (lambda (path) (format "\"../../~a\"" path))
+                      new-wat-files))))
