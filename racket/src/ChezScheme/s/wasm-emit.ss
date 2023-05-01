@@ -4,6 +4,15 @@
         [(and (pair? (car lst)) (pair? (caar lst))) (append (flatten-l2 (car lst)) (flatten-l2 (cdr lst)))]
         [else (cons (car lst) (flatten-l2 (cdr lst)))]))
 
+(define-syntax (wasm-emit stx)
+  (syntax-case stx (temp)
+    [(_ (locals ([id t] ...)) forms ...)
+     ;(map syntax->datum (generate-temporaries #'(id ...)))
+        #'(let ([id (format "$~a" (syntax->datum (car (generate-temporaries #'(id)))))] ...)
+             (flatten-l2 `((local ,id t) ... forms ...)))]
+    [(_ forms ...) 
+          #'(flatten-l2 `(forms ...))]))
+
   (define next-local
     (lambda ()
       (define do-iter
@@ -67,24 +76,11 @@
       (i64.load)
       (local.set ,out)))
 
-  (define-syntax (wasm-emit stx)
-    (syntax-case stx (scope)
-      [(_ (scope n) forms ...)
-        #'(uniquify-free-vars
-            (flatten-l2
-              `(forms ...))
-            local-gen n)]
-      [(_ forms ...)
-        #'(uniquify-free-vars
-            (flatten-l2
-              `(forms ...))
-            local-gen #f)]))
 
   (define (emit-pb-mov16-pb-zero-bits-pb-shift dest imm-unsigned shift ms)
-    (wasm-emit
-      (local $_0 i32)
-      ,(generate-regs-lhs dest ms 8 '$_0)
-      (local.get $_0)
+    (wasm-emit (local ([$0 i32]))
+      ,(generate-regs-lhs dest ms 8 $0)
+      (local.get ,$0)
         ,(case shift
           [(0) `(i32.const ,imm-unsigned)]
           [(1) `((i32.const ,imm-unsigned) (i32.const 16) (i32.shl))]
@@ -95,111 +91,111 @@
 
   (define (emit-pb-mov16-pb-keep-bits-pb-shift dest imm-unsigned shift ms)
     (wasm-emit
-      (local $_0 i32)
-      (local $_1 i64)
-      (local $_2 i64)
-      ,(generate-regs-lhs dest ms 8 '$_0)
+      (local ([$0 i32]
+              [$1 i64]
+              [$2 i64]))
+      ,(generate-regs-lhs dest ms 8 $0)
       ,(case shift
           [(0) `(i32.const ,imm-unsigned)]
           [(1) `((i32.const ,imm-unsigned) (i32.const 16) (i32.shl))]
           [(2) `((i32.const ,imm-unsigned) (i32.const 32) (i32.shl))]
           [(3) `((i32.const ,imm-unsigned) (i32.const 48) (i32.shl))])
       (i64.extend_i32_s)
-      (local.set $_1)
+      (local.set ,$1)
 
-      ,(load-and-set '$_0 '$_2)
+      ,(load-and-set $0 $2)
 
-      (local.get $_0)
+      (local.get ,$0)
 
-      (local.get $_1)
-      (local.get $_2)
+      (local.get ,$1)
+      (local.get ,$2)
       (i64.or)
 
       (i64.store)))
     
     (define (emit-pb-mov-pb-i-i dest reg ms)
-      (wasm-emit
-        (local $_0 i32)
-        (local $_1 i32)
-        (local $_2 i64)
-        ,(generate-regs-lhs dest ms 8 '$_0)
-        ,(generate-regs-lhs reg ms 8 '$_1) 
-        ,(load-and-set '$_1 '$_2)
+      (wasm-emit (local ([$0 i32] [$1 i32] [$2 i64]))
+        ,(generate-regs-lhs dest ms 8 $0)
+        ,(generate-regs-lhs reg ms 8 $1) 
+        ,(load-and-set $1 $2)
 
-        (local.get $_0)
-        (local.get $_2)
+        (local.get ,$0)
+        (local.get ,$2)
         (i64.store)))
     
     (define (do-pb-mov-pb-d-d fp-dest fp-reg ms)
       (wasm-emit
-        (local $_0 i32)
-        (local $_1 i32)
-        (local $_2 f64)
-        ,(generate-fpregs-lhs fp-dest ms '$_0) 
-        ,(generate-fpregs-lhs fp-reg ms '$_1)
-        ,(load-and-set '$_1 '$_2)
-        (local.get $_0)
-        (local.get $_2)
+        (locals ([$0 i32]
+                 [$1 i32]
+                 [$2 f64]))
+        ,(generate-fpregs-lhs fp-dest ms $0) 
+        ,(generate-fpregs-lhs fp-reg ms $1)
+        ,(load-and-set $1 $2)
+        (local.get ,$0)
+        (local.get ,$2)
         (i64.store)))
     
     (define (do-pb-mov-i-d fp-dest reg ms)
       (wasm-emit
-        (local $_0 i32)
-        (local $_1 i32)
-        (local $_2 i64)
-        ,(generate-fpregs-lhs fp-dest ms 8'$_0) 
-        ,(generate-regs-lhs reg ms 8 '$_1)
-        ,(load-and-set '$_1 '$_2)
+        (locals ([$0 i32]
+                 [$1 i32]
+                 [$2 i64]))
+        ,(generate-fpregs-lhs fp-dest ms 8 $0) 
+        ,(generate-regs-lhs reg ms 8 $1)
+        ,(load-and-set $1 $2)
 
-        (local.get $_0)
+        (local.get ,$0)
 
-        (local.get $_2)
+        (local.get ,$2)
         (f64.convert_i32_s)
 
         (f64.store)))
     
     (define (do-pb-mov-d-i reg-dest fp-reg ms)
       (wasm-emit
-        (local $_0 i32)
-        (local $_1 i32)
-        (local $_2 f64)
-        ,(generate-regs-lhs reg-dest ms 8 '$_0)
-        ,(generate-fpregs-lhs fp-reg ms 8 '$_1)
-        ,(load-and-set '$_1 '$_2)
+        (locals ([$0 i32]
+                 [$1 i32]
+                 [$2 f64]))
+        ,(generate-regs-lhs reg-dest ms 8 $0)
+        ,(generate-fpregs-lhs fp-reg ms 8 $1)
+        ,(load-and-set $1 $2)
 
-        (local.get $_0)
-        (local.get $_2)
+        (local.get ,$0)
+        (local.get ,$2)
         (i64.trunc_f64_s)
 
         (i64.store)))
     
     (define (do-pb-mov-i-bits-d-bits fp-dest reg ms)
       (wasm-emit
-        (local $_0 i32)
-        (local $_1 i32)
-        (local $_2 i64)
-        ,(generate-fpregs-lhs fp-dest ms 8 '$_0)
-        ,(generate-regs-lhs reg ms 8 '$_1)
-        ,(load-and-set '$_1 '$_2)
+        (locals ([$0 i32]
+                 [$1 i32]
+                 [$2 i64]))
+        ,(generate-fpregs-lhs fp-dest ms 8 $0)
+        ,(generate-regs-lhs reg ms 8 $1)
+        ,(load-and-set $1 $2)
 
-        (local.get $_0)
+        (local.get ,$0)
 
-        (local.get $_2)
+        (local.get ,$2)
         (f64.reinterpret_i64)
         (f64.store)))
 
   (define (do-pb-mov-d-bits-i-bits reg-dest fp-reg ms)
     (wasm-emit
-      (local $_0 i32)
-      (local $_1 i32)
-      (local $_2 f64)
-      ,(generate-regs-lhs reg-dest ms 8 '$_0)
-      ,(generate-fpregs-lhs fp-reg ms 8 '$_1)
-      ,(load-and-set '$_1 '$_2)
+      (locals ([$0 i32]
+               [$1 i32]
+               [$2 f64]))
+      (local $0 i32)
+      (local $1 i32)
+      (local $2 f64)
+      ,(generate-regs-lhs reg-dest ms 8 $0)
+      ,(generate-fpregs-lhs fp-reg ms 8 $1)
+      ,(load-and-set $1 $2)
 
-      (local.get $_0)
+      (local.get ,$0)
 
-      (local.get $_2)
+      (local.get ,$2)
       (i64.reinterpret_f64)
 
       (i64.store)))
@@ -208,34 +204,29 @@
 
   (define (do-pb-mov-s-d fpregs-dest fpreg ms endian)
     (wasm-emit
-      (local $_0 i32)
-      (local $_1 i32)
-      (local $_2 f64)
-      ,(generate-regs-lhs fpregs-dest ms 8 '$_0)
-      ,(generate-regs-lhs fpreg ms 8 '$_1)
+      (locals ([$0 i32] 
+               [$1 i32] 
+               [$2 f64]))
+      ,(generate-regs-lhs fpregs-dest ms 8 $0)
+      ,(generate-regs-lhs fpreg ms 8 $1)
 
-      (local.get $_1)
+      (local.get ,$1)
       (f32.load offset=,(if (equal? endian 'big) 4 0))
       (f64.promote_f32)
 
-      (local.set $_2)
+      (local.set ,$2)
 
-      (i32.load $_0)
-      (local.get $_2)
+      (i32.load ,$0)
+      (local.get ,$2)
 
       (f64.store)))
 
   (define (load-from-reg reg ms dst)
-    ; introduce a new scope prefix '%'
-    ; to avoid conflicts with the dst passed
-    ; in. We only want to assign unique names to variables
-    ; introduced within this "scope"
-    (wasm-emit (scope '%)
-      (local %0 i32)
-      (local %1 i64)
-      ,(generate-regs-lhs reg ms 8 '%0) 
-      ,(load-and-set '%0 '%1)
-      (local.get %1)
+    (wasm-emit (locals ([$0 i32]
+                        [$1 i64]))
+      ,(generate-regs-lhs reg ms 8 $0) 
+      ,(load-and-set $0 $1)
+      (local.get ,$1)
       (local.set ,dst)))
 
   (define (load-from-fpreg fpreg ms dst)
@@ -243,51 +234,48 @@
     ; to avoid conflicts with the dst passed
     ; in. We only want to assign unique names to variables
     ; introduced within this "scope"
-    (wasm-emit (scope '%)
-      (local %0 i32)
-      (local %1 i32)
-      ,(generate-fpregs-lhs fpreg ms 8 '%0) 
-      ,(load-and-set '%0 '%1)
-      (local.get %1)
+    (wasm-emit (locals ([$0 i32] [$1 i32]))
+      ,(generate-fpregs-lhs fpreg ms 8 $0) 
+      ,(load-and-set $0 $1)
+      (local.get ,$1)
       (local.set ,dst)))
 
   (define (do-pb-mov-d-s fpreg-dest fpreg ms endian)
     (wasm-emit
-      (local $_0 i32)
-      (local $_1 f64)
-      (local $_2 i32)
-      ,(generate-regs-lhs fpreg ms 8 '$_0)
-      ,(load-and-set '$_0 '$_1)
-      ,(generate-regs-lhs fpreg-dest ms 8 '$_2)
+      (locals ([$0 i32]
+                [$1 f64]
+                [$2 i32]))
+      ,(generate-regs-lhs fpreg ms 8 $0)
+      ,(load-and-set $0 $1)
+      ,(generate-regs-lhs fpreg-dest ms 8 $2)
 
-      (local.get $_2)
+      (local.get ,$2)
       ,(if (equal? endian 'big)
         `((i32.const 4) (i32.add))
         `())
 
-      (f64.get $_1)
+      (f64.get ,$1)
       (f32.demote_f64)
 
       (f32.store)))
 
   (define (do-pb-mov-d-s-d fpregs-dest fpreg ms)
     (wasm-emit
-      (local $_0 f64)
-      (local $_1 i32)
-      ,(load-from-fpreg fpreg ms '$_0)
-      ,(generate-fpregs-lhs fpreg ms 8 '$_1)
+      (locals ([$0 f64]
+               [$1 i32]))
+      ,(load-from-fpreg fpreg ms $0)
+      ,(generate-fpregs-lhs fpreg ms 8 $1)
 
-      (local.get $_1)
+      (local.get ,$1)
 
-      (local.get $_0)
+      (local.get ,$0)
       (f32.trunc_f64_s)
       (f64.promote_f32)
 
       (f64.store)))
 
   (define (do-pb-binop-no-signal op op1 op2)
-    (wasm-emit (scope '%) ; use a different scope indicator so we can use passed in op1 and op2
-                          ; and we don't rewrite them in this nested context
+    (wasm-emit
       (local.get ,op1) 
       (local.get ,op2)
       ,(case op
@@ -309,49 +297,44 @@
 
   (define (emit-pb-bin-op-pb-no-signal-pb-register dest reg1 reg2 ms op)
     (wasm-emit
-      (local $_0 i64)
-      (local $_1 i64)
-      (local $_2 i32)
-      ,(load-from-reg reg1 ms '$_0)
-      ,(load-from-reg reg2 ms '$_1)
-      ,(generate-regs-lhs dest ms 8 '$_2)
+      (locals ([$0 i64] [$1 i64] [$2 i32]))
+      ,(load-from-reg reg1 ms $0)
+      ,(load-from-reg reg2 ms $1)
+      ,(generate-regs-lhs dest ms 8 $2)
       ; load address to store to
-      (local.get $_2)
+      (local.get ,$2)
       ; do op
-      ,(do-pb-binop-no-signal op '$_0 '$_1)
+      ,(do-pb-binop-no-signal op $0 $1)
       ; store to perform assignment
       (i64.store)))
 
   (define (emit-pb-bin-op-pb-no-signal-pb-immediate dest reg imm ms op)
     (wasm-emit
-      (local $_0 i64)
-      (local $_1 i64)
-      (local $_2 i32)
+      (locals ([$0 i64]
+               [$1 i64]
+               [$2 i32]))
 
-      ,(load-from-reg reg ms '$_0)
+      ,(load-from-reg reg ms $0)
       (i32.const ,imm)
 
       ; sign extension of the immediate is crucial here, as we need the equivalent
       ; signed value to add to a register of larger size
       (i64.extend_i32_s)
-      (local.set $_1)
-      ,(generate-regs-lhs dest ms 8 '$_2)
+      (local.set ,$1)
+      ,(generate-regs-lhs dest ms 8 $2)
 
       ; load address to store to
-      (local.get $_2)
+      (local.get ,$2)
       ; do op
-      ,(do-pb-binop-no-signal op '$_0 '$_1)
+      ,(do-pb-binop-no-signal op $0 $1)
       ; store to perform assignment
       (i64.store)))
-
-  ;; TODO: overflow-enabled operations. Need to determine how to call __builtin_add_overflow etc.
 
   (define (unimplemented tag)
     ($oops 'unimplemented (format "~a\n" tag)))
 
   (define (emit-pb-binop-signal op op1 op2 flag result)
-    (wasm-emit (scope '%) ; use a different scope indicator so we can use passed in op1 and op2
-                          ; and we don't rewrite them in this nested context
+    (wasm-emit
       (local.get ,op1) 
       (local.get ,op2)
       ,(case op
@@ -390,36 +373,32 @@
                 (i64.xor r ,(wasm-not b)))) (i64.const 63))]))
 
   (define (do-pb-sub-pb-signal op1 op2 result flag)
-    (wasm-emit (scope '@)
-      (local @_a i64)
-      (local @_b i64)
-      (local @_r i64)
+    (wasm-emit
+      (locals ([$a i64] [$b i64] [$r i64]))
 
-      (local.set @_r (i64.sub (local.get ,op1) (local.get,op2)))
-      (local.set @_a (local.get ,op1))
-      (local.set @_b (local.get ,op2))
+      (local.set ,$r (i64.sub (local.get ,op1) (local.get,op2)))
+      (local.set ,$a (local.get ,op1))
+      (local.set ,$b (local.get ,op2))
 
-      (local.set ,flag (i32.wrap_i64 ,(sign-flip (local.get @_r) (local.get @_a) (local.get @_b))))
-      (local.set ,result (local.get @_r))))
+      (local.set ,flag (i32.wrap_i64 ,(sign-flip (local.get ,$r) (local.get ,$a) (local.get ,$b))))
+      (local.set ,result (local.get ,$r))))
   
   (define (do-pb-add-pb-signal op1 op2 result flag)
-    (wasm-emit (scope '@)
-      (local @_a i64)
-      (local @_b i64)
-      (local @_r i64)
+    (wasm-emit
+      (locals ([$a i64] [$b i64] [$r i64]))
 
-      (local.set @_r (i64.add (local.get ,op1) (local.get,op2)))
-      (local.set @_a (local.get ,op1))
-      (local.set @_b (local.get ,op2))
+      (local.set ,$r (i64.add (local.get ,op1) (local.get,op2)))
+      (local.set ,$a (local.get ,op1))
+      (local.set ,$b (local.get ,op2))
 
-      (local.set ,flag (i32.wrap_i64 ,(sign-flip (local.get @_r) (local.get @_a) (local.get @_b))))
-      (local.set ,result (local.get @_r))))
-
+      (local.set ,flag (i32.wrap_i64 ,(sign-flip (local.get ,$r) (local.get ,$a) (local.get ,$b))))
+      (local.set ,result (local.get ,$r))))
 
   (define (do-pb-mul-pb-signal op1 op2 result flag)
-    (wasm-emit (scope '@)
-      (local @_0 i64)
-      (local.set @_0
+    (wasm-emit
+      (locals ([$0 i64]))
+
+      (local.set ,$0
         (i64.mul
           (local.get ,op1)
           (local.get ,op2)))
@@ -438,53 +417,53 @@
                       (local.set ,flag
                           (i64.ne
                               (local.get ,op1) 
-                              (i64.mul (local.get @_0) (i64.const -1)))))
+                              (i64.mul (local.get ,$0) (i64.const -1)))))
                   (else
                       ;; flag = a != (signed) r / (signed b)
                       (local.set ,flag
                           (i64.ne
                               (local.get ,op1) 
-                              (i64.sdiv (local.get @_0) (local.get ,op2))))))))
-      (local.set ,result (local.get @_0))))
+                              (i64.sdiv (local.get ,$0) (local.get ,op2))))))))
+      (local.set ,result (local.get ,$0))))
                               
   (define (emit-pb-binop-signal-pb-register dest reg1 reg2 ms flag op)
       (wasm-emit
-        (local $_0 i64)
-        (local $_1 i64)
-        (local $_2 i32)
-        (local $_3 i64)
-        ,(load-from-reg reg1 ms '$_0) 
-        ,(load-from-reg reg2 ms '$_1)
-        ,(generate-regs-lhs dest ms 8 '$_2)
-        ,(emit-pb-binop-signal op '$_0 '$_1 flag '$_3)
+        (locals ([$0 i64]
+                 [$1 i64]
+                 [$2 i32]
+                 [$3 i64]))
+        ,(load-from-reg reg1 ms $0) 
+        ,(load-from-reg reg2 ms $1)
+        ,(generate-regs-lhs dest ms 8 $2)
+        ,(emit-pb-binop-signal op $0 $1 flag $3)
 
-        (local.get $_2)
-        (local.get $_3)
+        (local.get ,$2)
+        (local.get ,$3)
 
         (i64.store)))
   
   (define (emit-pb-binop-signal-pb-immediate dest reg imm ms flag op)
       (wasm-emit
-        (local $_0 i64)
-        (local $_1 i64)
-        (local $_2 i32)
-        (local $_3 i64)
-        ,(load-from-reg reg ms '$_0)
+        (locals ([$0 i64]
+                 [$1 i64]
+                 [$2 i32]
+                 [$3 i64]))
+        ,(load-from-reg reg ms $0)
 
         (i32.const ,imm)
         (i64.extend_i32_s)
-        (local.set $_1)
+        (local.set ,$1)
 
-        ,(generate-regs-lhs dest ms 8 '$_2)
-        ,(emit-pb-binop-signal op '$_0 '$_1 flag '$_3)
+        ,(generate-regs-lhs dest ms 8 $2)
+        ,(emit-pb-binop-signal op $0 $1 flag $3)
 
-        (local.get $_2)
-        (local.get $_3)
+        (local.get ,$2)
+        (local.get ,$3)
 
         (i64.store)))
 
   (define (do-pb-cmp-op-no-signal op op1 op2)
-    (wasm-emit (scope '%)
+    (wasm-emit
       (local.get ,op1)
       (local.get ,op2)
       ,(case op
@@ -507,25 +486,24 @@
 
   (define (emit-pb-cmp-op-pb-register reg1 reg2 ms cmp-op flag)
     (wasm-emit
-      (local $_0 i64)
-      (local $_1 i64) 
-      ,(load-from-reg reg1 ms '$_0)
-      ,(load-from-reg reg2 ms '$_1)
-      ,(do-pb-cmp-op-no-signal cmp-op '$_0 '$_1)
+      (locals ([$0 i64]
+               [$1 i64]))
+      ,(load-from-reg reg1 ms $0)
+      ,(load-from-reg reg2 ms $1)
+      ,(do-pb-cmp-op-no-signal cmp-op $0 $1)
 
       (local.set ,flag)))
     
   (define (emit-pb-cmp-op-pb-immediate reg imm ms cmp-op flag)
     (wasm-emit
-      (local $_0 i64)
-      (local $_1 i64)
-      ,(load-from-reg reg ms '$_0)
+      (locals ([$0 i64] [$1 i64]))
+      ,(load-from-reg reg ms $0)
 
       (i32.const ,imm)
       (i64.extend_i32_s)
-      (local.set $_1)
+      (local.set ,$1)
 
-      ,(do-pb-cmp-op-no-signal cmp-op '$_0 '$_1)
+      ,(do-pb-cmp-op-no-signal cmp-op $0 $1)
 
       (local.set ,flag)))
   
@@ -538,20 +516,20 @@
     (define load-op (string->symbol (format "~a.load" val-type)))
     (define store-op (string->symbol (format "~a.store" val-type)))
     (wasm-emit
-      (local $_0 i32)
-      (local $_1 i64)
-      ,(generate-regs-lhs dest ms word-size '$_0)
+      (locals ([$0 i32] [$1 i64]))
+      ,(generate-regs-lhs dest ms word-size $0)
 
+;; TODO: used passed in `ip` symbol
       (local.get $ip)
       (i32.const ,literal-offset)
       (i32.add)
 
       (,load-op)
 
-      (local.set $_1)
+      (local.set ,$1)
 
-      (local.get $_0)
-      (local.get $_1)
+      (local.get ,$0)
+      (local.get ,$1)
       (,store-op)))
   
   (define (pb-load-type->wasm-load-type src-type dest-type)
@@ -617,23 +595,21 @@
     (define store-op (string->symbol (format "~a.store" dest-type)))
 
     (wasm-emit
-      (local $_0 i32)
-      (local $_1 i64)
-      (local $_2 ,dest-type)
+      (locals ([$0 i32] [$1 i64] [$2 ,dest-type]))
       ,(if (or (equal? dest-type 'f32) (equal? dest-type 'f64))
-         (generate-fpregs-lhs dest ms word-size '$_0)
-         (generate-regs-lhs dest ms word-size '$_0))
-      ,(load-from-reg base ms '$_1)
-      (local.get $_1)
+         (generate-fpregs-lhs dest ms word-size $0)
+         (generate-regs-lhs dest ms word-size $0))
+      ,(load-from-reg base ms $1)
+      (local.get ,$1)
       (i32.wrap_i64)
       (i32.const ,imm)
       (i32.add)
 
       (,load-op)
-      (local.set $_2)
+      (local.set ,$2)
 
-      (local.get $_0)
-      (local.get $_2)
+      (local.get ,$0)
+      (local.get ,$2)
 
       (,store-op)))
   
@@ -644,31 +620,32 @@
     (define store-op (string->symbol (format "~a.~a" reg-type st-type)))
 
     (wasm-emit 
-      ; value to store
-      (local $_0 ,reg-type)
-
-      ; base address
-      (local $_1 i64)
-      ,(if (or (equal? reg-type 'f32) (equal? reg-type 'f64))
-        (load-from-fpreg dest ms '$_0)
-        (load-from-reg dest ms '$_0))
+      (locals 
+              ; value to store 
+              ([$0 ,reg-type]
+              ; base address
+               [$1 i64]))
       
-      ,(load-from-reg base ms '$_1)
-      (local.get $_1)
+      ,(if (or (equal? reg-type 'f32) (equal? reg-type 'f64))
+        (load-from-fpreg dest ms $0)
+        (load-from-reg dest ms $0))
+      
+      ,(load-from-reg base ms $1)
+      (local.get ,$1)
       (i32.wrap_i64)
       (i32.const ,imm)
       (i32.add)
 
-      (local.get $_0)
+      (local.get ,$0)
 
       (,store-op)))
   
   (define (emit-pb-b*-pb-immediate base target-offset ms)
     (wasm-emit
-      (local $_0 i64)
-      ,(load-from-reg base ms '$_0)
+      (locals ([$0 i64]))
+      ,(load-from-reg base ms $0)
 
-      (local.get $_0)
+      (local.get ,$0)
       (i32.wrap_i64)
       (i32.const ,target-offset)
       (i32.add)
@@ -699,9 +676,9 @@
         ,(append
           '(then)
             (wasm-emit
-              (local $_0 i64)
-              ,(load-from-reg reg ms '$_0)
-              (local.get $_0)
+              (locals ([$0 i64]))
+              ,(load-from-reg reg ms $0)
+              (local.get ,$0)
               (i32.wrap_i64)
               (return)))
         (else (return (i32.add (local.get $ip) 
@@ -709,9 +686,9 @@
   
   (define (emit-pb-adr dest ms imm next-instr)
     (wasm-emit 
-      (local $_0 i32)
-      (local $_1 i32)
-      ,(generate-regs-lhs dest ms 8 '$_0)
+      (locals ([$0 i32]
+               [$1 i32]))
+      ,(generate-regs-lhs dest ms 8 $0)
 
       (local.get $ip)
       (i32.const ,next-instr)
@@ -722,10 +699,10 @@
       (i32.shl)
 
       (i32.add)
-      (local.set $_1)
+      (local.set ,$1)
 
-      (local.get $_0)
-      (local.get $_1)
+      (local.get ,$0)
+      (local.get ,$1)
 
       ; address is unsigned, we do not want to sign-extend when
       ; converting to i64
@@ -741,15 +718,7 @@
   
   ;; TODO: fp bin ops and fp cmp ops
 
-  ; (define (first-index-of s c)
-  ;   (let loop ([i 0] [str-lst (string->list s)])
-  ;     (cond
-  ;       [(empty? s) #f]
-  ;       [(equal? (car str-lst) c) i]
-  ;       [else (loop (+ 1 i) (cdr str-lst))])))
-
-
-  ;; we assume the local definition is valid here
+;; we assume the local definition is valid here
 (define (is-local-def? sexp)
     (and (pair? sexp) (equal? (car sexp) 'local)))
 
