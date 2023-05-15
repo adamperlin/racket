@@ -975,8 +975,8 @@
         
          (define-syntax (emit stx)
             (syntax-case stx (di/u
-                               di di/f dr dr/f dr/x
-                               drr dri drr/f dri/f dri/c
+                               di di/f dr dr/f fp-dr/f fp-dr dr/x
+                               drr fp-drr dri drr/f dri/f dri/c
                                dri/x r d/f d/x i r/b i/b dr/b di/b n n/x
                                adr literal nop ld st rev
                                mov16/z mov16/k mov i->i d->d i->d d->i s->d d->s d->s->d
@@ -1039,6 +1039,16 @@
                                         'cmp-op
                                         '$flag)))]
                 
+                [(_ op fp-dr/f fp-cmp-op) 
+                  #'(dr-form 'op 
+                        (lambda () 
+                          (emit-pb-fp-cmp-op
+                            (instr-dr-dest instr)
+                            (instr-dr-reg instr)
+                            '$ms
+                            'fp-cmp-op
+                            '$flag)))]
+                
                 [(_ op di/f cmp-op) #'(di-form 'op
                                         (lambda ()
                                           (emit-pb-cmp-op-pb-immediate
@@ -1089,7 +1099,24 @@
                                                 '$ms
                                                 '$flag
                                                 'b-op)))]
-
+              ; fp binops
+              [(_ op fp-drr fp-b-op) #'(drr-form 'op 
+                                        (lambda () 
+                                          (emit-pb-fp-binop
+                                            (instr-drr-dest instr)
+                                            (instr-drr-reg1 instr)
+                                            (instr-drr-reg2 instr)
+                                            '$ms
+                                            'fp-b-op)))]
+              
+               [(_ op fp-dr fp-un-op) #'(dr-form 'op 
+                                         (lambda ()
+                                          (emit-pb-fp-unop
+                                            (instr-dr-dest instr)
+                                            (instr-dr-reg instr)
+                                            '$ms
+                                            'fp-un-op)))]
+              
                ; ld
                [(_ op dri ld src-type) 
                 #'(dri-form 'op

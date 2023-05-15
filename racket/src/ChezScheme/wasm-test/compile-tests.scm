@@ -1,5 +1,5 @@
 (define test-boot-file-name "wasm-pbchunk-tests.boot")
-(define source-files (list "wasm-pbchunk-tests.ss"))
+(define source-files (list "wasm-pbchunk-tests.scm"))
 (define target-files (list "wasm-pbchunk-tests.so"))
 
 (map compile-file source-files)

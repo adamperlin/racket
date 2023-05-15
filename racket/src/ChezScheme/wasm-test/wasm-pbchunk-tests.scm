@@ -11,7 +11,7 @@
     (fxior (fxsrl fx1 3) (fxsll fx1 3))))
 
 (define (hypot fl1 fl2) 
-  (fxsqrt (fx+ (fx* fl1 fl1) (fx* fl2 fl2))))
+  (flsqrt (fl+ (fl* fl1 fl1) (fl* fl2 fl2))))
 
 ;; splits a list in two
 (define (split-lst lst)
@@ -52,12 +52,17 @@
 ; test load/stores of values with differing fixed sizes
 ; more floating point tests?
 
+(define (within-tol x y delta)
+  (fl<= (flabs (fl- x y)) delta))
+
 (scheme-start 
    (lambda ()
       (printf "~a\n" (my-merge '(1 4 5 8) '(2 3 7)))
       (printf "~a\n" (merge-sort '(10 -1 2 0 7 5 9)))
       (printf "~a\n" (split-lst '(1 2 3 4 5 6)))
+      (printf "~a\n" (hypot 3. 4.))
       (assert (equal? (simple-cons 1) '(1)))
       (assert (equal? (merge-sort '(10 -1 2 0 7 5 9)) '(-1 0 2 5 7 9 10)))
       (assert (= (add3 10 11) 24))
-      (assert (= (fact 10) 3628800))))
+      (assert (= (fact 10) 3628800))
+      (assert (within-tol (hypot 3. 4.) 5. .001))))

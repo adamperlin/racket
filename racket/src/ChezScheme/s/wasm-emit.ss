@@ -7,27 +7,11 @@
 (define-syntax (wasm-emit stx)
   (syntax-case stx (temp)
     [(_ (locals ([id t] ...)) forms ...)
-     ;(map syntax->datum (generate-temporaries #'(id ...)))
-        #'(let ([id (format "$~a" (syntax->datum (car (generate-temporaries #'(id)))))] ...)
+      #'(let ([id (format "$~a" (syntax->datum (car (generate-temporaries #'(id)))))] ...)
              (flatten-l2 `((local ,id t) ... forms ...)))]
     [(_ forms ...) 
           #'(flatten-l2 `(forms ...))]))
 
-  (define next-local
-    (lambda ()
-      (define do-iter
-        (lambda ()
-          (call/cc control-state)))
-      (define control-state
-        (lambda (return)
-          (let loop ([i 0])
-            (set! return (call/cc
-              (lambda (resume)
-                (set! control-state resume)
-                (return i))))
-            (loop (+ 1 i)))))
-      do-iter))
-  
   (define (load-for-size n) 
     (case 
       [(4) 'i32.load]
@@ -36,8 +20,6 @@
 
   (define (shift-for-size size)
     (flonum->fixnum (log size 2)))
-
-  (define local-gen (next-local))
 
   (define (generate-regs-lhs dest ms reg-size tmp)
       `((i32.const ,dest)
@@ -71,11 +53,11 @@
 
   ; simple wrapper to load from an address (with no offset) and store in
   ; a desired local variable
-  (define (load-and-set ptr out)
-    `((local.get ,ptr)
-      (i64.load)
-      (local.set ,out)))
-
+  (define (load-and-set ptr out ty)
+    (let ([load-instr `(,(format "~a.load" ty))])
+      `((local.get ,ptr)
+        ,load-instr
+        (local.set ,out))))
 
   (define (emit-pb-mov16-pb-zero-bits-pb-shift dest imm-unsigned shift ms)
     (wasm-emit (local ([$0 i32]))
@@ -103,7 +85,7 @@
       (i64.extend_i32_s)
       (local.set ,$1)
 
-      ,(load-and-set $0 $2)
+      ,(load-and-set $0 $2 'i64)
 
       (local.get ,$0)
 
@@ -117,7 +99,7 @@
       (wasm-emit (local ([$0 i32] [$1 i32] [$2 i64]))
         ,(generate-regs-lhs dest ms 8 $0)
         ,(generate-regs-lhs reg ms 8 $1) 
-        ,(load-and-set $1 $2)
+        ,(load-and-set $1 $2 'i64)
 
         (local.get ,$0)
         (local.get ,$2)
@@ -130,7 +112,7 @@
                  [$2 f64]))
         ,(generate-fpregs-lhs fp-dest ms $0) 
         ,(generate-fpregs-lhs fp-reg ms $1)
-        ,(load-and-set $1 $2)
+        ,(load-and-set $1 $2 'f64)
         (local.get ,$0)
         (local.get ,$2)
         (i64.store)))
@@ -142,7 +124,7 @@
                  [$2 i64]))
         ,(generate-fpregs-lhs fp-dest ms 8 $0) 
         ,(generate-regs-lhs reg ms 8 $1)
-        ,(load-and-set $1 $2)
+        ,(load-and-set $1 $2 'i64)
 
         (local.get ,$0)
 
@@ -158,7 +140,7 @@
                  [$2 f64]))
         ,(generate-regs-lhs reg-dest ms 8 $0)
         ,(generate-fpregs-lhs fp-reg ms 8 $1)
-        ,(load-and-set $1 $2)
+        ,(load-and-set $1 $2 'f64)
 
         (local.get ,$0)
         (local.get ,$2)
@@ -173,7 +155,7 @@
                  [$2 i64]))
         ,(generate-fpregs-lhs fp-dest ms 8 $0)
         ,(generate-regs-lhs reg ms 8 $1)
-        ,(load-and-set $1 $2)
+        ,(load-and-set $1 $2 'i64)
 
         (local.get ,$0)
 
@@ -191,7 +173,7 @@
       (local $2 f64)
       ,(generate-regs-lhs reg-dest ms 8 $0)
       ,(generate-fpregs-lhs fp-reg ms 8 $1)
-      ,(load-and-set $1 $2)
+      ,(load-and-set $1 $2 'f64)
 
       (local.get ,$0)
 
@@ -225,18 +207,14 @@
     (wasm-emit (locals ([$0 i32]
                         [$1 i64]))
       ,(generate-regs-lhs reg ms 8 $0) 
-      ,(load-and-set $0 $1)
+      ,(load-and-set $0 $1 'i64)
       (local.get ,$1)
       (local.set ,dst)))
 
   (define (load-from-fpreg fpreg ms dst)
-    ; introduce a new scope prefix '%'
-    ; to avoid conflicts with the dst passed
-    ; in. We only want to assign unique names to variables
-    ; introduced within this "scope"
-    (wasm-emit (locals ([$0 i32] [$1 i32]))
+    (wasm-emit (locals ([$0 i32] [$1 f64]))
       ,(generate-fpregs-lhs fpreg ms 8 $0) 
-      ,(load-and-set $0 $1)
+      ,(load-and-set $0 $1 'f64)
       (local.get ,$1)
       (local.set ,dst)))
 
@@ -294,6 +272,34 @@
         [else (unimplemented op)]
         ; TODO: lslo implementations
       )))
+  
+    (define (do-pb-fp-binop-no-signal op op1 op2)
+      (wasm-emit
+        (local.get ,op1)
+        (local.get ,op2)
+        ,(case op
+          [(add) '(f64.add)]
+          [(sub) '(f64.sub)]
+          [(mul) '(f64.mul)]
+          [(div) '(f64.div)]
+          [else (unimplemented op)])))
+  
+  (define (do-pb-fp-unop op op0)
+    (wasm-emit
+      (local.get ,op0)
+      ,(case op
+        [(sqrt) '(f64.sqrt)]
+        [else ($oops 'wasm-emit "unsupported pb unary operation ~a" op)])))
+  
+  (define (emit-pb-fp-unop fp-dest fpreg ms op)
+    (wasm-emit
+      (locals ([$0 i32] [$1 f64] [$2 f64]))
+        ,(generate-fpregs-lhs fp-dest ms 8 $0)
+        ,(load-from-fpreg fpreg ms $1)
+
+        (local.get ,$0)
+        ,(do-pb-fp-unop op $1)
+        (f64.store)))
 
   (define (emit-pb-bin-op-pb-no-signal-pb-register dest reg1 reg2 ms op)
     (wasm-emit
@@ -307,6 +313,39 @@
       ,(do-pb-binop-no-signal op $0 $1)
       ; store to perform assignment
       (i64.store)))
+  
+  (define (emit-pb-fp-binop dest reg1 reg2 ms op) 
+    (wasm-emit
+      (locals ([$0 f64] [$1 f64] [$2 i32]))
+        ,(load-from-fpreg reg1 ms $0)
+        ,(load-from-fpreg reg2 ms $1)
+        ,(generate-fpregs-lhs dest ms 8 $2)
+
+        (local.get ,$2)
+        ,(do-pb-fp-binop-no-signal op $0 $1)
+
+        (f64.store)))
+
+  
+  (define (do-pb-fp-cmp-op cmp-op op1 op2)
+    (wasm-emit
+      (local.get ,op1)
+      (local.get ,op2)
+
+      ,(case cmp-op
+        [(eq) '(f64.eq)]
+        [(le) '(f64.le)]
+        [(lt) '(f64.lt)]
+        [else ($oops 'wasm-emit "unsupported fp cmp operation")])))
+  
+  (define (emit-pb-fp-cmp-op reg1 reg2 ms flag cmp-op)
+    (wasm-emit 
+      (locals ([$0 f64] [$1 f64]))
+      ,(load-from-fpreg reg1 ms $0)
+      ,(load-from-fpreg reg2 ms $1)
+      ,(do-pb-fp-cmp-op cmp-op $0 $1)
+      (local.set ,flag)))
+
 
   (define (emit-pb-bin-op-pb-no-signal-pb-immediate dest reg imm ms op)
     (wasm-emit
@@ -318,7 +357,7 @@
       (i32.const ,imm)
 
       ; sign extension of the immediate is crucial here, as we need the equivalent
-      ; signed value to add to a register of larger size
+      ; signed value to do a binary operation against a register of possibly larger size
       (i64.extend_i32_s)
       (local.set ,$1)
       ,(generate-regs-lhs dest ms 8 $2)
@@ -355,7 +394,7 @@
         [(add) (do-pb-add-pb-signal op1 op2 result flag)]
         [(div) (unimplemented 'div-signal)]
         [else (unimplemented op)])))
-
+  
   ; wasm does not have a bitwise not instruction, but
   ;; (num_type.xor $a (num_type.const -1)) has the same effect, where -1 = 0xffffff..
   (define-syntax wasm-not
@@ -441,7 +480,7 @@
         (local.get ,$3)
 
         (i64.store)))
-  
+
   (define (emit-pb-binop-signal-pb-immediate dest reg imm ms flag op)
       (wasm-emit
         (locals ([$0 i64]
@@ -759,32 +798,3 @@
           ; anything that is not a local declaration is not touched
           [else (traverse (cdr src-wasm) (append built-wasm (list (car src-wasm))) locals)]))])
     (append locals new-wasm)))
-
-  (define (is-temp-var? sym)
-    (let ([name (symbol->string sym)])
-      (and (>= (string-length name) 2)
-        (equal? (substring name 0 2) "$_"))))
-
-  (define (has-prefix? sym prefix)
-    (let ([name (symbol->string sym)]
-          [pref-len (string-length prefix)])
-      (and (>= (string-length name) pref-len)
-        (equal? (substring name 0 pref-len) prefix))))
-  
-  (define (uniquify-free-vars wasm-tree local-gen only-scope)
-    (define assigned (make-hashtable symbol-hash equal?))
-    (define default-prefix "$_")
-    (define prefix (if (symbol? only-scope) 
-                          (symbol->string only-scope)
-                          default-prefix))
-    (let traverse ([node wasm-tree])
-      (cond
-        [(list? node) (map traverse node)]
-        [(and (symbol? node) (has-prefix? node prefix))
-          (if (symbol-hashtable-contains? assigned node)
-            (symbol-hashtable-ref assigned node 0)
-            (let ([new-name (format "$v~a" (local-gen))])
-                (symbol-hashtable-set! assigned node new-name)
-                  new-name))]
-                  
-        [else node])))
