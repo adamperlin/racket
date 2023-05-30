@@ -137,7 +137,6 @@
                   (on-reset
                    (close-port output-port)
                    (k output-port)))))
-
         
         ;; given an output-port, writes a WAT module to the output port, 
         ;; including e
@@ -162,6 +161,7 @@
         ;; files written; return index after last chunk
         end-index))))
 
+;; PBChunk holdover
 ;; The main pbchunk handler: takes a fasl object in "strip.ss" form,
 ;; find code objects inside, and potentially generates chunks and updates
 ;; the code object with references to chunks. Takes the number of
@@ -181,6 +181,9 @@
 (define (chunk-vector! vec ci only-funcs exclude-funcs)
   (vector-for-each (lambda (e) (chunk! e ci only-funcs exclude-funcs)) vec))
 
+;; fasl contains several different types of data,
+;; some of which might contain references to code
+;; we need to ensure that we find all reachable code references
 (define (do-chunk! v ci only-funcs exclude-funcs)
   (fasl-case* v
     [(pair vec)
@@ -249,27 +252,15 @@
 
 (define (instr-i-imm instr) (bitwise-arithmetic-shift-right instr 8))
 
-(define (make-chunk-instr index sub-index)
+(define (make-wasm-chunk-instr index)
   (unless (eqv? index (bitwise-and index #xFFFF))
     ($oops 'pbchunk "chunk index ~a is too large" index))
-  (unless (eqv? sub-index (bitwise-and sub-index #xFF))
-    ($oops 'pbchunk "chunk sub-index ~a is too large" sub-index))
-  (bitwise-ior (constant pb-chunk)
-               (bitwise-arithmetic-shift-left sub-index 8)
-               (bitwise-arithmetic-shift-left index 16)))
-
-(define (make-wasm-chunk-instr index sub-index)
-  (unless (eqv? index (bitwise-and index #xFFFF))
-    ($oops 'pbchunk "chunk index ~a is too large" index))
-  (unless (eqv? sub-index (bitwise-and sub-index #xFF))
-    ($oops 'pbchunk "chunk sub-index ~a is too large" sub-index))
-    ;; TODO: add as constant
+  ;; TODO: add as constant
   (bitwise-ior 229
-               (bitwise-arithmetic-shift-left sub-index 8)
+               (bitwise-arithmetic-shift-left 0 8)
                (bitwise-arithmetic-shift-left index 16)))
 
-(define MAX-SUB-INDEXES 256)
-
+;; PBChunk holdover
 ;; expands to a binary search for the right case
 (define-syntax (instruction-case stx)
   (syntax-case stx ()
@@ -292,6 +283,7 @@
                           #,(loop mid end)
                           #,(loop start mid)))]))))]))
 
+;; Convention:
 ;; di = destination register and immediate
 ;; dr = destination register and immediate
 ;; etc.
@@ -300,6 +292,13 @@
 ;; .../f = sets flag
 ;; .../b = branch, uses flag deending on branch kind
 ;; .../c = foreign call
+
+;; Note: pbchunk dispatches instructions to C-macros which perform
+;; the work of the instruction. It is fairly straightforward to perform this mapping.
+;; For wasm, we need more information to distinguish between instructions, which is
+;; why we add properties to the instruction shape such as `mov`, `binop`
+;; size information for loads and stores, etc. This allows us to more easily
+;; extract the instruction variant information when an opcode is matched.
 (define-syntax (instruction-cases stx)
   (syntax-case stx ()
     [(_ instr emit)
@@ -449,6 +448,8 @@
         [pb-fp-call-arena-out di]
         [pb-stack-call dr])]))
 
+;; advances through a sorted list in order until the first occurrence
+;; of an item such that (sel e) >= i, where i is given
 (define (advance l sel i)
   (let loop ([l l])
     (cond
@@ -545,7 +546,6 @@
       (let ([chunklets
              ;; use `select-instruction-range` to partition the code into chunklets
              (let-values ([(headers labels) (gather-targets bv len)])
-               #;(fprintf o "/* labels: ~s */\n" (map (lambda (l) (format "0x~x" (label-to l))) labels))
                (let loop ([i 0] [relocs relocs] [headers headers] [labels labels])
                  (cond
                    [(fx= i len) '()]
@@ -556,11 +556,6 @@
                       (when (fx= i end-i)
                         ($oops 'chunk-code "failed to make progress at ~a out of ~a" i len))
                       (let ([continue-only? #f])
-                             ;; when the chunk would be too small to save us any time, so don't
-                             ;; bother make it stand-alone; a threshold greater than 1 also avoids
-                             ;; code that wouldn't even use `ms` or `ip`:
-                            ;  (fx< (fx- end-i start-i)
-                            ;       (fx* min-chunk-len instr-bytes))])
                         (cons (make-chunklet i start-i end-i uses-flag? continue-only? relocs headers labels)
                               (loop end-i
                                     (advance-relocs relocs end-i)
@@ -570,33 +565,8 @@
         ;; We can either generate each chunklet as its own chunk
         ;; function or generate one chunk function with multiple
         ;; chunklets
-        (let ([count (fold-left (lambda (sum c) (if (empty-chunklet? c) sum (fx+ 1 sum)))
-                                0
-                                chunklets)])
           (cond
-            ; [(fx> count 256)
-            ;  ;; this many chunklets suggests that compilation is not productive,
-            ;  ;; so just show the disassembly
-            ;  (fprintf o "/* (too many entry points) */\n")
-            ;  (let ([all-chunklets chunklets])
-            ;    (let loop ([chunklets chunklets])
-            ;      (unless (null? chunklets)
-            ;        (let ([c (car chunklets)])
-            ;          (compile-chunklet o bv
-            ;                         (chunklet-i c) 0
-            ;                         (chunklet-relocs c) (chunklet-headers c) '()
-            ;                         (chunklet-end-i c) ; => treat as empty
-            ;                         (chunklet-end-i c)
-            ;                         all-chunklets
-            ;                         ;; fallthrough?
-            ;                         #t)
-            ;          (loop (cdr chunklets))))))]
-            [(or one-chunklet-per-chunk?
-                 ;; also use this more if there's 0 or 1 chunklets to emit,
-                 ;; or more than `MAX-SUB-INDEXES`:
-                 (let ()
-                   (or (fx< count 2)
-                       (fx> count MAX-SUB-INDEXES))))
+            [one-chunklet-per-chunk?
              (let loop ([chunklets chunklets] [index index])
                (cond
                  [(null? chunklets)
@@ -626,52 +596,9 @@
 
                     (unless (empty-chunklet? c)
                       (emit-wasm-chunk-footer o)
-                      (bytevector-u32-set! bv (chunklet-start-i c) (make-wasm-chunk-instr index 0) (constant fasl-endianness)))
+                      (bytevector-u32-set! bv (chunklet-start-i c) (make-wasm-chunk-instr index) (constant fasl-endianness)))
                     (loop (cdr chunklets) (if (empty-chunklet? c) index (fx+ index 1))))]))]
-            [else
-             ;; one chunk for the whole code object, where multiple entry points are
-             ;; supported by a sub-index
-             (emit-wasm-chunk-header o index #t (ormap chunklet-uses-flag? chunklets))
-             (chunk-info-counter-set! ci (fx+ 1 index))
-             ;; dispatch to label on entry via sub-index
-             (fprintf o "  switch (sub_index) {\n")
-             ;; dispatch to a chunklet 
-             (let loop ([chunklets chunklets] [sub-index 0])
-               (unless (null? chunklets)
-                 (let ([c (car chunklets)])
-                   (cond
-                     [(empty-chunklet? c) (loop (cdr chunklets) sub-index)]
-                     [else
-                      (fprintf o "    case ~a:~a ip -= 0x~x; goto label_~x;\n"
-                               sub-index
-                               (if (andmap empty-chunklet? (cdr chunklets))
-                                   " default:"
-                                   "")
-                               (chunklet-start-i c)
-                               (chunklet-start-i c))
-                      (loop (cdr chunklets) (fx+ 1 sub-index))]))))
-             (fprintf o "  }\n")
-             (let ([all-chunklets chunklets])
-               (let loop ([chunklets chunklets] [sub-index 0])
-                 (unless (null? chunklets)
-                   (let ([c (car chunklets)])
-                     ;; emit a chunklet within the function
-                     (compile-chunklet o bv
-                                    (chunklet-i c) 0
-                                    (chunklet-relocs c) (chunklet-headers c)
-                                    (if (empty-chunklet? c)
-                                        (chunklet-labels c)
-                                        (ensure-label (chunklet-start-i c) (chunklet-labels c)))
-                                    (chunklet-start-i c) (chunklet-end-i c)
-                                    all-chunklets ; `goto` branches allowed across chunklets
-                                    ;; fallthrough?
-                                    (and (pair? (cdr chunklets))
-                                         (fx= (chunklet-end-i c)
-                                              (chunklet-start-i (cadr chunklets)))))
-                     (unless (empty-chunklet? c)
-                       (bytevector-u32-set! bv (chunklet-start-i c) (make-chunk-instr index sub-index) (constant fasl-endianness)))
-                     (loop (cdr chunklets) (if (empty-chunklet? c) sub-index (fx+ 1 sub-index)))))))
-             (emit-wasm-chunk-footer o)]))))))
+             )))))
 
 ;; Find all branch targets in the code object
 (define (gather-targets bv len)
@@ -855,7 +782,6 @@
              [(_ op drr/f . _) #'(keep-signalling)]
              [(_ op dri/f . _) #'(keep-signalling)]
              [(_ op literal) #'(keep-literal)]
-             ;[(_ op nop) #'(keep-signalling)] ; nops are occasionally emitted between comparison and branch instructions
              [_ #'(skip)]))
          (instruction-cases instr dispatch))])))
 
