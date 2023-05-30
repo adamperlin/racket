@@ -7,7 +7,6 @@
 (include "benchmark-common.scm")
 
 (define (count r i step x y)
-
   (let ((max-count 64)
         (radius^2  16.0))
 
@@ -47,7 +46,7 @@
     (mbrot matrix -1.0 -0.5 0.005 n)
     (vector-ref (vector-ref matrix 0) 0)))
 
-(define (main . args)
+(define (mbrot-main . args)
   (let* ((count (car args))
          (input1 (cadr args))
          (output (caddr args))
@@ -59,5 +58,3 @@
      count
      (lambda () (test (hide count input1)))
      (lambda (result) (= result output)))))
-
-(main 1000 75 5)

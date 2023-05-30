@@ -10,7 +10,7 @@
         (fl+ (fixnum->flonum (time-second d)) 
             (fl/ (fixnum->flonum (time-nanosecond d)) (fixnum->flonum 1000000000))))
 
-(define-syntax (collect-cpu-time stx)
+(define-syntax (collect-real-time stx)
     (syntax-case stx ()
         [(_ call-form)
             #'(let ([s1 (statistics)])
@@ -19,7 +19,7 @@
                         (let ([after (statistics)])
                             (let ([diff (sstats-difference (sstats-difference after before)
                                                                 (sstats-difference before s1))])
-                                (values result (fractional-time (sstats-cpu diff))))))))]))
+                                (values result (fractional-time (sstats-real diff))))))))]))
 
 ;;; Given the name of a benchmark,
 ;;; the number of times it should be executed,
@@ -41,7 +41,7 @@
              [result (if #f #f)]
              [times '()])
         (cond [(< i count)
-                (let-values ([(result t) (collect-cpu-time (thunk))])
+                (let-values ([(result t) (collect-real-time (thunk))])
                     (loop (+ i 1) result (cons t times)))]
             [(ok? result)
             (values result times)]

@@ -34,7 +34,7 @@
       (+ (fib (- n 1))
          (fib (- n 2)))))
   
-(define (main . args)
+(define (fib-main . args)
   (let* ((count (car args))
          (input (cadr args))
          (output (caddr args))
@@ -46,5 +46,3 @@
      count
      (lambda () (fib (hide count input)))
      (lambda (result) (= result output)))))
-
-(main 3 40 102334155)

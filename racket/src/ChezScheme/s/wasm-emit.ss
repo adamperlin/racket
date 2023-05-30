@@ -105,19 +105,19 @@
         (local.get ,$2)
         (i64.store)))
     
-    (define (do-pb-mov-pb-d-d fp-dest fp-reg ms)
+    (define (emit-pb-mov-pb-d-d fp-dest fp-reg ms)
       (wasm-emit
         (locals ([$0 i32]
                  [$1 i32]
                  [$2 f64]))
-        ,(generate-fpregs-lhs fp-dest ms $0) 
-        ,(generate-fpregs-lhs fp-reg ms $1)
+        ,(generate-fpregs-lhs fp-dest ms 8 $0) 
+        ,(generate-fpregs-lhs fp-reg ms 8 $1)
         ,(load-and-set $1 $2 'f64)
         (local.get ,$0)
         (local.get ,$2)
-        (i64.store)))
+        (f64.store)))
     
-    (define (do-pb-mov-i-d fp-dest reg ms)
+    (define (emit-pb-mov-pb-i-d fp-dest reg ms)
       (wasm-emit
         (locals ([$0 i32]
                  [$1 i32]
@@ -129,7 +129,7 @@
         (local.get ,$0)
 
         (local.get ,$2)
-        (f64.convert_i32_s)
+        (f64.convert_i64_s)
 
         (f64.store)))
     
@@ -336,7 +336,7 @@
         [(eq) '(f64.eq)]
         [(le) '(f64.le)]
         [(lt) '(f64.lt)]
-        [else ($oops 'wasm-emit "unsupported fp cmp operation")])))
+        [else ($oops 'wasm-emit "unsupported fp cmp operation ~a" cmp-op)])))
   
   (define (emit-pb-fp-cmp-op reg1 reg2 ms flag cmp-op)
     (wasm-emit 
@@ -345,7 +345,6 @@
       ,(load-from-fpreg reg2 ms $1)
       ,(do-pb-fp-cmp-op cmp-op $0 $1)
       (local.set ,flag)))
-
 
   (define (emit-pb-bin-op-pb-no-signal-pb-immediate dest reg imm ms op)
     (wasm-emit
@@ -652,6 +651,36 @@
 
       (,store-op)))
   
+  (define (emit-pb-ld-pb-register dest base reg ms src-type word-size)
+    (define dest-type (word-size->dest-type word-size (is-fp? src-type)))
+    (define load-type (pb-load-type->wasm-load-type src-type dest-type))
+    (define load-op
+      (string->symbol (format "~a.~a"  dest-type load-type)))
+    (define store-op (string->symbol (format "~a.store" dest-type)))
+
+    (wasm-emit
+      (locals ([$0 i32] [$1 i64] [$2 i64] [$3 ,dest-type]))
+      ,(if (or (equal? dest-type 'f32) (equal? dest-type 'f64))
+         (generate-fpregs-lhs dest ms word-size $0)
+         (generate-regs-lhs dest ms word-size $0))
+      ,(load-from-reg base ms $1)
+      ,(load-from-reg reg ms $2)
+
+      (local.get ,$1)
+      (i32.wrap_i64)
+
+      (local.get ,$2)
+      (i32.wrap_i64)
+      (i32.add)
+
+      (,load-op)
+      (local.set ,$3)
+
+      (local.get ,$0)
+      (local.get ,$3)
+
+      (,store-op)))
+  
   (define (emit-pb-st-pb-immediate dest base imm ms src-type word-size)
     (define reg-type (word-size->dest-type word-size (is-fp? src-type)))
     (define st-type (pb-st-type->wasm-st-type src-type word-size))
@@ -673,6 +702,39 @@
       (local.get ,$1)
       (i32.wrap_i64)
       (i32.const ,imm)
+      (i32.add)
+
+      (local.get ,$0)
+
+      (,store-op)))
+  
+
+  (define (emit-pb-st-pb-register dest base reg ms src-type word-size)
+    (define reg-type (word-size->dest-type word-size (is-fp? src-type)))
+    (define st-type (pb-st-type->wasm-st-type src-type word-size))
+
+    (define store-op (string->symbol (format "~a.~a" reg-type st-type)))
+
+    (wasm-emit 
+      (locals 
+              ; value to store 
+              ([$0 ,reg-type]
+              ; base address
+               [$1 i64]
+               [$2 i64]))
+      
+      ,(if (or (equal? reg-type 'f32) (equal? reg-type 'f64))
+        (load-from-fpreg dest ms $0)
+        (load-from-reg dest ms $0))
+      
+      ,(load-from-reg base ms $1)
+      ,(load-from-reg reg ms $2)
+
+      (local.get ,$1)
+      (i32.wrap_i64)
+
+      (local.get ,$2)
+      (i32.wrap_i64)
       (i32.add)
 
       (local.get ,$0)

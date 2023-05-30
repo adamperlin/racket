@@ -10,7 +10,7 @@
            (tak (- y 1) z x)
            (tak (- z 1) x y))))
 
-(define (main . args)
+(define (tak-main . args)
   (let* ((count (car args))
          (input1 (cadr args))
          (input2 (caddr args))
@@ -27,5 +27,3 @@
      (lambda ()
        (tak (hide count input1) (hide count input2) (hide count input3)))
      (lambda (result) (equal? result output)))))
-
-(main 10 32 16 8 9)

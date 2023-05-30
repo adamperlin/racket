@@ -19,6 +19,9 @@
 
   (define msvc? (is-msvc? config))
 
+  (define (wasm-opt? config)
+     (equal? (hash-ref config 'WASM_OPT) "yes"))
+
   (define (or-windows .c)
     (if (for-windows? config)
 	"windows.c"
@@ -404,7 +407,20 @@
                              [(glob-match? "*.wat" .asm)
                               (shell/wait "wat2wasm -r -o"
                                           (string->shell .o) 
-                                          (string->shell .asm))]
+                                          (string->shell .asm))
+
+                             ;; (when (wasm-opt? config)
+                              ;;  (display "WASM OPT!!!")
+                               ;; (shell/wait "wasm-opt -S --enable-reference-types -O2"
+                                ;;            (string->shell .o)
+                                 ;;           "-o"
+                                  ;;          (string->shell .asm))
+
+                                ;;(shell/wait "wat2wasm -r -o"
+                                 ;;         (string->shell .o) 
+                                  ;;        (string->shell .asm)))
+                                          
+                                          ]
                              [else (error "don't know how to assemble")]))])
             kernel-asms kernel-asmobjs)
 

@@ -7,18 +7,63 @@
 (when (null? args)
     (error who "missing arguments"))
 
-(define srcfile (car args))
-(define dest (cadr args))
-(define arch (caddr args))
-(define only-funcs (cdddr args))
+(define-record-type flags
+  (fields
+    (mutable petite?)
+    (mutable dest)
+    (mutable arch)
+    (mutable extra-boot)
+    (mutable only-funcs)
+    (mutable exclude-funcs)))
+  
 
-(printf "srcfile:  ~a\n" srcfile)
+  
+(define (parse-args args arg-state)
+  (cond 
+    [(null? args) arg-state]
+    [(equal? (car args) "--petite")
+      (flags-petite?-set! arg-state #t)
+      (parse-args (cdr args) arg-state)]
+
+    [(equal? (car args) "--dest")
+      (flags-dest-set! arg-state (cadr args))
+      (parse-args (cddr args) arg-state)]
+    
+    [(equal? (car args) "--arch" )
+      (flags-arch-set! arg-state (cadr args))
+      (parse-args (cddr args) arg-state)]
+
+    [(equal? (car args) "--extra-boot")
+      (flags-extra-boot-set! arg-state (cadr args))
+      (parse-args (cddr args) arg-state)]
+
+    [(equal? (car args) "--exclude-funcs")
+     (flags-exclude-funcs-set! arg-state (cdr args))]
+    
+    [(equal? (car args) "--only-funcs")
+      (flags-only-funcs-set! arg-state (cdr args))]))
+
+(define arg-state (make-flags #f "" "" "" '() '()))
+(parse-args args arg-state)
+
+(define petite? (flags-petite? arg-state))
+(define dest (flags-dest arg-state))
+(define arch (flags-arch arg-state))
+(define extra-boot (flags-extra-boot arg-state))
+(define only-funcs (flags-only-funcs arg-state))
+(define exclude-funcs (flags-exclude-funcs arg-state))
+
+(define petite-boot (format "boot/~a/petite.boot" arch))
+
+(define boots (if petite?
+                (list petite-boot extra-boot)
+                (list extra-boot)))
+
+
+(printf "boots:  ~a\n" boots)
 (printf "dest-dir: ~a\n" dest)
 (printf "arch: ~a\n" arch)
 (printf "funcs: ~a" only-funcs)
-
-(when (null? only-funcs)
-  (error who "must provide at least one function to be chunked"))
 
 ; (when (null? args)
 ;   (error who "missing srcdir"))
@@ -86,7 +131,6 @@
 ;             (unless (file-exists? f)
 ;               (error who "file not found: ~s" f)))
 ;           '(srcfile))
-(define boots (list srcfile))
 (for-each (lambda (f)
             (delete-file (string-append dest "/" f)))
           (directory-list dest))
@@ -147,7 +191,8 @@
                                               (car dest-boots)
                                               new-wat-file
                                               index
-                                              only-funcs)])
+                                              only-funcs
+                                              exclude-funcs)])
               (loop (cdr src-boots)
                     (cdr dest-boots)
                     index

@@ -87,7 +87,7 @@
         [(< i n) (cons i (loop (add1 i)))]
         [else '()])))
 
-(define (fasl-wasm-pbchunk! who output-file-name only-funcs start-index entry* handle-entry finish-fasl-update)
+(define (fasl-wasm-pbchunk! who output-file-name only-funcs exclude-funcs start-index entry* handle-entry finish-fasl-update)
   ;; first print everything to a string port, and then
   ;; break up the string port into separate files
   (let-values ([(0-op get) (open-string-output-port)])
@@ -104,7 +104,7 @@
                     (loop (cdr entry*) index))
                   (lambda (situation x)
                     (loop (cdr entry*)
-                          (search-pbchunk! x 0-op index seen-table only-funcs))))]))]
+                          (search-pbchunk! x 0-op index seen-table only-funcs exclude-funcs))))]))]
            [input-port (open-string-input-port (get))])
       ;; before continuing, write out updated fasl:
       (finish-fasl-update)
@@ -147,29 +147,29 @@
 ;; find code objects inside, and potentially generates chunks and updates
 ;; the code object with references to chunks. Takes the number of
 ;; chunks previously written and returns the total number written after.
-(define (search-pbchunk! v code-op start-index seen-table only-funcs)
+(define (search-pbchunk! v code-op start-index seen-table only-funcs exclude-funcs)
   (let ([ci (make-chunk-info start-index
                              seen-table
                              code-op)])
-    (chunk! v ci only-funcs)
+    (chunk! v ci only-funcs exclude-funcs)
     (chunk-info-counter ci)))
 
-(define (chunk! v ci only-funcs)
+(define (chunk! v ci only-funcs exclude-funcs)
   (unless (eq-hashtable-ref (chunk-info-seen ci) v #f)
     (eq-hashtable-set! (chunk-info-seen ci) v #t)
-    (do-chunk! v ci only-funcs)))
+    (do-chunk! v ci only-funcs exclude-funcs)))
 
-(define (chunk-vector! vec ci only-funcs)
-  (vector-for-each (lambda (e) (chunk! e ci only-funcs)) vec))
+(define (chunk-vector! vec ci only-funcs exclude-funcs)
+  (vector-for-each (lambda (e) (chunk! e ci only-funcs exclude-funcs)) vec))
 
-(define (do-chunk! v ci only-funcs)
+(define (do-chunk! v ci only-funcs exclude-funcs)
   (fasl-case* v
     [(pair vec)
-     (chunk-vector! vec ci only-funcs)]
+     (chunk-vector! vec ci only-funcs exclude-funcs)]
     [(tuple ty vec)
      (constant-case* ty
        [(fasl-type-box fasl-type-immutable-box)
-        (chunk! (vector-ref vec 0) ci only-funcs)]
+        (chunk! (vector-ref vec 0) ci only-funcs exclude-funcs)]
        [(fasl-type-weak-pair)
         ($oops 'chunk "weak pair not supported")]
        [(fasl-type-ephemeron)
@@ -178,27 +178,27 @@
     [(vector ty vec)
      (constant-case* ty
        [(fasl-type-vector fasl-type-immutable-vector)
-        (chunk-vector! vec ci only-funcs)]
+        (chunk-vector! vec ci only-funcs exclude-funcs)]
        [else (void)])]
     [(stencil-vector mask vec sys?)
-     (chunk-vector! vec ci only-funcs)]
+     (chunk-vector! vec ci only-funcs exclude-funcs)]
     [(record maybe-uid size nflds rtd pad-ty* fld*)
      (for-each (lambda (fld)
-                 (field-case fld [ptr (elem) (chunk! elem ci only-funcs)] [else (void)]))
+                 (field-case fld [ptr (elem) (chunk! elem ci only-funcs exclude-funcs)] [else (void)]))
                fld*)]
     [(closure offset c)
-     (chunk! c ci only-funcs)]
+     (chunk! c ci only-funcs exclude-funcs)]
     [(code flags free name arity-mask info pinfo* bytes m vreloc)
-     (chunk-code! name bytes vreloc ci only-funcs)
-     (chunk-vector! vreloc ci only-funcs)]
+     (chunk-code! name bytes vreloc ci only-funcs exclude-funcs)
+     (chunk-vector! vreloc ci only-funcs exclude-funcs)]
     [(reloc type-etc code-offset item-offset elem)
-     (chunk! elem ci only-funcs)]
+     (chunk! elem ci only-funcs exclude-funcs)]
     [(symbol-hashtable mutable? minlen subtype veclen vpfasl)
      (vector-for-each (lambda (p)
-                        (chunk! (car p) ci only-funcs)
-                        (chunk! (cdr p) ci only-funcs))
+                        (chunk! (car p) ci only-funcs exclude-funcs)
+                        (chunk! (cdr p) ci only-funcs exclude-funcs))
                       vpfasl)]
-    [(indirect g i) (chunk! (vector-ref g i) ci only-funcs)]
+    [(indirect g i) (chunk! (vector-ref g i) ci only-funcs exclude-funcs)]
     [else
      ;; nothing else contains references that can reach code
      (void)]))
@@ -503,7 +503,7 @@
           (write-loop (cdr wasm)))))
 
 ;; Found a code object, maybe generate a chunk
-(define (chunk-code! name bv vreloc ci only-funcs)
+(define (chunk-code! name bv vreloc ci only-funcs exclude-funcs)
   (let ([len (bytevector-length bv)]
         [o (chunk-info-code-op ci)]
         [relocs (let loop ([off 0] [rels (vector->list vreloc)])
@@ -519,7 +519,9 @@
         [name (extract-name name)])
         
     (fprintf o "\n;; code ~a \n" name)
-    (unless (or (equal? name "winder-dummy") (and (pair? only-funcs) (not (member name only-funcs)))) ; hack to avoid special rp header in dounderflow
+    (unless (or (equal? name "winder-dummy") 
+                (if (pair? only-funcs) (not (member name only-funcs)) #f)
+                (if (pair? exclude-funcs) (member name exclude-funcs)  #f)) ; hack to avoid special rp header in dounderflow
       (display (format "name: ~a\n" name))
       (let ([chunklets
              ;; use `select-instruction-range` to partition the code into chunklets
@@ -531,10 +533,7 @@
                    [else
                     (let-values ([(start-i end-i uses-flag?)
                                   (select-instruction-range bv i len relocs headers labels)])
-                      (display (format "headers: ~a\n" headers))
-                      (display (format "labels: ~a\n" labels))
                       (display (format "instruction range for chunk: ~a ~a\n" start-i end-i))
-                      (printf "len is: ~a\n" len)
                       (when (fx= i end-i)
                         ($oops 'chunk-code "failed to make progress at ~a out of ~a" i len))
                       (let ([continue-only? #f])
@@ -556,30 +555,29 @@
                                 0
                                 chunklets)])
           (cond
-            [(fx> count 256)
-             ;; this many chunklets suggests that compilation is not productive,
-             ;; so just show the disassembly
-             (fprintf o "/* (too many entry points) */\n")
-             (let ([all-chunklets chunklets])
-               (let loop ([chunklets chunklets])
-                 (unless (null? chunklets)
-                   (let ([c (car chunklets)])
-                     (compile-chunklet o bv
-                                    (chunklet-i c) 0
-                                    (chunklet-relocs c) (chunklet-headers c) '()
-                                    (chunklet-end-i c) ; => treat as empty
-                                    (chunklet-end-i c)
-                                    all-chunklets
-                                    ;; fallthrough?
-                                    #t)
-                     (loop (cdr chunklets))))))]
+            ; [(fx> count 256)
+            ;  ;; this many chunklets suggests that compilation is not productive,
+            ;  ;; so just show the disassembly
+            ;  (fprintf o "/* (too many entry points) */\n")
+            ;  (let ([all-chunklets chunklets])
+            ;    (let loop ([chunklets chunklets])
+            ;      (unless (null? chunklets)
+            ;        (let ([c (car chunklets)])
+            ;          (compile-chunklet o bv
+            ;                         (chunklet-i c) 0
+            ;                         (chunklet-relocs c) (chunklet-headers c) '()
+            ;                         (chunklet-end-i c) ; => treat as empty
+            ;                         (chunklet-end-i c)
+            ;                         all-chunklets
+            ;                         ;; fallthrough?
+            ;                         #t)
+            ;          (loop (cdr chunklets))))))]
             [(or one-chunklet-per-chunk?
                  ;; also use this more if there's 0 or 1 chunklets to emit,
                  ;; or more than `MAX-SUB-INDEXES`:
                  (let ()
                    (or (fx< count 2)
                        (fx> count MAX-SUB-INDEXES))))
-              (display (format "HERE one-chunklet-per-chunk ~a\n" one-chunklet-per-chunk?))
              (let loop ([chunklets chunklets] [index index])
                (cond
                  [(null? chunklets)
@@ -820,7 +818,7 @@
 
          (define-syntax (dispatch stx)
            (syntax-case stx (dri/x dr/x d/x n/x r/b i/b d/f dr/b di/b
-                                   dr/f di/f drr/f dri/f literal nop)
+                                   dr/f fp-dr/f di/f drr/f dri/f literal nop)
              [(_ op dri/x) #'(stop-before)]
              [(_ op dr/x) #'(stop-before)]
              [(_ op d/x) #'(stop-before)]
@@ -829,6 +827,7 @@
              [(_ op i/b '()) #'(keep-and-stop-after #f)]
              [(_ op r/b _) #'(keep-and-stop-after #t)]
              [(_ op i/b _) #'(keep-and-stop-after #t)]
+             [(_ op fp-dr/f _) #'(keep-signalling)]
              [(_ op d/f) #'(keep-signalling)]
              [(_ op dr/b . _) #'(stop-after)]
              [(_ op di/b . _) #'(stop-after)]
@@ -837,6 +836,7 @@
              [(_ op drr/f . _) #'(keep-signalling)]
              [(_ op dri/f . _) #'(keep-signalling)]
              [(_ op literal) #'(keep-literal)]
+             ;[(_ op nop) #'(keep-signalling)] ; nops are occasionally emitted between comparison and branch instructions
              [_ #'(skip)]))
          (instruction-cases instr dispatch))])))
 
@@ -877,13 +877,15 @@
     (cond
       [(and (pair? headers)
             (fx= i (caar headers)))
+          (printf "at header: ~a\n" i)
         (let ([size (cdar headers)])
           (cond
             [(fx>= i start-i)
               (if (fx= i end-i) 
                   ;; if we are at the start of a header AND at the end of a chunk,
                   ;; finish off the chunk by returning the address after the header
-                  (emit-return generated (fx+ i instr-bytes size))
+                  
+                  (emit-return generated (fx+ i size))
                   ($oops 'emit-chunk "should have ended at header ~a/~a" i end-i))]
             [else
                 (fprintf o ";; data: ~a bytes\n" size)
@@ -895,7 +897,7 @@
                         generated))]))]
       [(fx= i end-i)
         (printf "i:~a HIT CHUNK END\n" i)
-        (emit-return generated (fx+ i instr-bytes))]
+        (emit-return generated i)]
       [(and (pair? labels)
             (fx= i (label-to (car labels))))
        (when (fx>= i start-i)
@@ -953,7 +955,7 @@
         
           (define (r/b-form _op emit)
               (next (append generated
-                `((comment . ,(format ";;~a: b r~a" i (instr-d-dest instr)))) 
+                `((comment . ,(format ";;~a: b r~a" i (instr-dr-reg instr)))) 
                  (emit)
               )))
           
@@ -1017,8 +1019,23 @@
                         (instr-dr-dest instr) 
                         (instr-dr-reg instr)
                         '$ms)))]
-               [(_ op dr mov d->d) #'(unimplemented 'op)]
-               [(_ op dr mov i->d) #'(unimplemented 'op)]
+
+               [(_ op dr mov d->d)
+                  #'(dr-form 'op
+                    (lambda ()
+                      (emit-pb-mov-pb-d-d 
+                        (instr-dr-dest instr)
+                        (instr-dr-reg instr)
+                        '$ms)))]
+
+               [(_ op dr mov i->d)
+                  #'(dr-form 'op
+                    (lambda ()
+                      (emit-pb-mov-pb-i-d
+                        (instr-dr-dest instr)
+                        (instr-dr-reg instr)
+                          '$ms)))]
+
                [(_ op dr mov d->i) #'(unimplemented 'op)]
                [(_ op dr mov s->d) #'(unimplemented 'op)]
                [(_ op dr mov d->s) #'(unimplemented 'op)]
@@ -1046,9 +1063,9 @@
                             (instr-dr-dest instr)
                             (instr-dr-reg instr)
                             '$ms
-                            'fp-cmp-op
-                            '$flag)))]
-                
+                            '$flag
+                            'fp-cmp-op)))]
+
                 [(_ op di/f cmp-op) #'(di-form 'op
                                         (lambda ()
                                           (emit-pb-cmp-op-pb-immediate
@@ -1128,7 +1145,17 @@
                         '$ms
                         'src-type
                         8)))]
-                [(_ op drr ld src-type) #'(unimplemented 'op)]
+                
+                [(_ op drr ld src-type)
+                  #'(drr-form 'op
+                      (lambda ()
+                        (emit-pb-ld-pb-register
+                          (instr-drr-dest instr)
+                          (instr-drr-reg1 instr)
+                          (instr-drr-reg2 instr)
+                          '$ms
+                          'src-type
+                          8)))]
 
                 ; st
                 [(_ op dri st src-type) 
@@ -1141,7 +1168,17 @@
                         '$ms
                         'src-type
                         8)))]
-                [(_ op drr st src-type) #'(unimplemented 'op)]
+
+                [(_ op drr st src-type) 
+                  #'(drr-form 'op 
+                    (lambda ()
+                      (emit-pb-st-pb-register 
+                        (instr-drr-dest instr)
+                        (instr-drr-reg1 instr)
+                        (instr-drr-reg2 instr)
+                        '$ms
+                        'src-type
+                        8)))]
 
                 ; rev
                 [(_ op dr rev type) #'(unimplemented 'op)]
@@ -1189,7 +1226,6 @@
                     (unless (and (pair? relocs)
                                  (fx= (fx+ i instr-bytes) (car relocs)))
                       ($oops 'pbchunk "no relocation after pb-literal?"))
-                      (display (format "literal loading from: ~a\n" (fx+ i instr-bytes)))
                       (let ([gen (append generated 
                                   `((comment . ,(format ";; literal r~a" (instr-di-dest instr))))
                                   (emit-pb-literal 

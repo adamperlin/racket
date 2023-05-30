@@ -9,6 +9,7 @@
 #include "pb.h"
 
 typedef uptr (*chunk_t)(machine_state *ms, uptr, int);
+//typedef uptr (*wasm_chunk_t)(machine_state *ms, uptr)
 
 static chunk_t *chunks;
 static int num_chunks;
@@ -531,7 +532,7 @@ void S_pb_interp(ptr tc, void *bytecode) {
 #ifdef WASM_PBCHUNK
     case 229: // wasm_pb_chunk
      //printf("wasm_pb_chunk\n");
-     //printf("instr_high: %d\n ", INSTR_ii_high(instr));
+      //printf("wasm_pb_chunk_index: %d\n ", INSTR_ii_high(instr));
       //printf("current ip is: %p\n", ip);
       //dump_machine_state(ms);
       next_ip = TO_VOIDP(wasm_do_jump(INSTR_ii_high(instr), ms, TO_PTR(ip)));

@@ -252,6 +252,9 @@ while [ $# != 0 ] ; do
       AR="emar"
       RANLIB="emranlib"
       ;;
+    --wasm-opt)
+      WASM_OPT="yes"
+    ;;
     --force)
       forceworkarea=yes
       enableFrompb=no
@@ -1009,6 +1012,7 @@ disablex11=$disablex11
 enablelibffi=$libffi
 preloadBootFiles=$preloadBootFiles
 alwaysUseBootFile=$alwaysUseBootFile
+WASM_OPT=$WASM_OPT
 
 InstallBin=$installbin
 InstallLib=$installlib

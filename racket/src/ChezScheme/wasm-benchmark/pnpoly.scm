@@ -8,6 +8,7 @@
 
 (define (pt-in-poly2 xp yp x y)
   (let loop ((c #f) (i (- (vector-length xp) 1)) (j 0))
+       ; (printf "i is: ~a\n" i)
     (if (< i 0)
       c
       (if (or (and (or (fl>? (vector-ref yp i) y)
@@ -43,7 +44,7 @@
     (if (pt-in-poly2 xp yp -.5 -2.5) (set! count (+ count 1)))
     count))
 
-(define (main . args)
+(define (pnpoly-main . args)
   (let* ((count (car args))
          (input1 (cadr args))
          (input2 (caddr args))
@@ -57,7 +58,7 @@
      (lambda () (run (hide count input1) (hide count input2)))
      (lambda (result) (and (number? result) (= result output))))))
 
-(main 500000
-        '#(0. 1. 1. 0. 0. 1. -.5 -1. -1. -2. -2.5 -2. -1.5 -.5 1. 1. 0. -.5 -1. -.5)
-        '#(0. 0. 1. 1. 2. 3. 2. 3. 0. -.5 -1.  -1.5 -2. -2. -1.5 -1. -.5 -1. -1. -.5) 
-        6)
+; (main 500000
+;         '#(0. 1. 1. 0. 0. 1. -.5 -1. -1. -2. -2.5 -2. -1.5 -.5 1. 1. 0. -.5 -1. -.5)
+;         '#(0. 0. 1. 1. 2. 3. 2. 3. 0. -.5 -1.  -1.5 -2. -2. -1.5 -1. -.5 -1. -1. -.5) 
+;         6)

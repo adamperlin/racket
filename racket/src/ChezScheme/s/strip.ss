@@ -936,7 +936,7 @@
                                (for-each (lambda (entry) (write-entry op entry)) entry*)))))
       
       (set-who! wasm-pbchunk-convert-file
-        (lambda (ifn ofn wat-output-file-name start-index only-funcs)
+        (lambda (ifn ofn wat-output-file-name start-index only-funcs exclude-funcs)
           (display (format "wasm-pbchunk-convert-file\n"))
           (unless (string? ifn) ($oops who "~s is not a string" ifn))
           (unless (string? ofn) ($oops who "~s is not a string" ofn))
@@ -949,6 +949,7 @@
                                 who
                                 wat-output-file-name
                                 only-funcs
+                                exclude-funcs
                                 start-index
                                 entry*
                                 handle-entry
