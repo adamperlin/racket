@@ -1,16 +1,15 @@
-;; pbchunk conversion uses the fasl parser from "strip.ss"; it mutates
-;; code in the parsed structure to generate references to C chunks
-;; that implement a shadow version of a chunk of bytecode instructions,
-;; and then the printer of "strip.ss" is used to write the updated
-;; fasl content
+;; wasm-pbchunk is very similar to the conversion in pbchunk.ss;
+;; instead of references to C-chunks however, it generates references to chunks in Wasm (in WAT form).
+;; Another major difference is the lack of local branching; For now, chunks can only be 
+;; basic blocks.
 
 (let ()
 
   (include "strip-types.ss")
   (include "wasm-emit.ss")
 
-  ;; for a wasm module, what should the memory size be configured as?
-  (define module-mem-size 20000)
+  ;; for a wasm module, what should the memory size be configured as? This is hardcoded as 10 64kb pages for now
+  (define module-mem-size 10)
 
   ;; Holdover configuration option from original pbchunk. `#t` is not practial for the boot files,
   ;; but is needed for wasm to avoid dispatch to chunklets (or sub-chunks)
@@ -23,10 +22,16 @@
           code-op)
   (nongenerative))
 
+
+;; Holdover from the original PBChunk. 
 ;; A chunklet represents a potential entry point into a code
 ;; object. It may have a prefix before the entry point that
 ;; is not generated as in C. A code object can have multiple
 ;; chunklets or just one.
+
+;; Note that in wasm-pbchunk, the relocs, header, and labels fields go 
+;; more or less unused, but they are kept since there is a large possibility that 
+;; they will be needed in the future.
 (define-record-type chunklet
   (fields i        ; code offset for this start of this chunklet
           start-i  ; code offset for the entry point (= end-i if there's no entry)
@@ -38,6 +43,7 @@
           labels)  ; list of `label`s, none before this chunklet but maybe some after
   (nongenerative))
 
+;; Holdover from original pbchunk
 ;; A label within a chunklet, especially for interior branches
 (define-record-type label
   (fields to        ; the label offset
@@ -45,6 +51,10 @@
           max-from  ; latest offset that jumps here
           all-from) ; all offsets that jump here
   (nongenerative))
+
+
+;; Utilities
+
 
 (define (write-chunk-registration output-port chunk-function-names)
   ;; write $_chunksig type and $chunks table declaration to module
@@ -88,24 +98,28 @@
         [else '()])))
 
 (define (fasl-wasm-pbchunk! who output-file-name only-funcs exclude-funcs start-index entry* handle-entry finish-fasl-update)
-  ;; first print everything to a string port, and then
-  ;; break up the string port into separate files
-  (let-values ([(0-op get) (open-string-output-port)])
-    (let* ([seen-table (make-eq-hashtable)]
-           [end-index
-            (let loop ([entry* entry*] [index start-index])
-              (cond
-                [(null? entry*)
-                 index]
-                [else
-                 (handle-entry
-                  (car entry*)
-                  (lambda (write-k)
-                    (loop (cdr entry*) index))
-                  (lambda (situation x)
-                    (loop (cdr entry*)
-                          (search-pbchunk! x 0-op index seen-table only-funcs exclude-funcs))))]))]
+  ;; invokes search-pbchunk! on provided fasl entries, in sequence, returning the index of the final
+  ;; returned chunk
+
+  (define (search-entries entry* start-index output-port)
+    (let ([seen-table (make-eq-hashtable)])
+      (let loop ([entry* entry*] [index start-index])
+                  (cond
+                    [(null? entry*) index]
+                    [else
+                      (handle-entry
+                        (car entry*)
+                        (lambda (write-k)
+                          (loop (cdr entry*) index))
+                        (lambda (situation x)
+                          (loop (cdr entry*)
+                                (search-pbchunk! x output-port index seen-table only-funcs exclude-funcs))))]))))
+
+  ;; for now, we utilize a single string port for writing WAT output
+  (let-values ([(output-port get) (open-string-output-port)])
+    (let* ([end-index (search-entries entry* start-index output-port)]
            [input-port (open-string-input-port (get))])
+
       ;; before continuing, write out updated fasl:
       (finish-fasl-update)
 
@@ -124,24 +138,29 @@
                    (close-port output-port)
                    (k output-port)))))
 
-        (call-with-file
-         (lambda (output-port)
+        
+        ;; given an output-port, writes a WAT module to the output port, 
+        ;; including e
+        (define (write-module output-port)
+                ; begin module
                 (put-string output-port
                   (format "(module\n\t(memory ~a)" module-mem-size))
                  (let chunk-loop ([n 0] [line (get-line input-port)])
                    (cond
                      [(eof-object? line)
-                      ; close module
-                      (write-chunk-registration output-port generated-chunk-names)
-                      (newline output-port)
-                      (put-string output-port ")")
-                      (close-port output-port)]
-                     [else
+                        ; close module
+                        (write-chunk-registration output-port generated-chunk-names)
+                        (newline output-port)
+                        (put-string output-port ")")
+                        (close-port output-port)]
+                     [else ;; writing a single line of wasm
                       (put-string output-port line)
                       (newline output-port)
-                      (chunk-loop n (get-line input-port))])))))
+                      (chunk-loop n (get-line input-port))])))
+        (call-with-file write-module)
+
         ;; files written; return index after last chunk
-        end-index)))
+        end-index))))
 
 ;; The main pbchunk handler: takes a fasl object in "strip.ss" form,
 ;; find code objects inside, and potentially generates chunks and updates
