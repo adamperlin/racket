@@ -707,7 +707,6 @@ static void finish_dependencies_header(int fd, const char *path, int c) {
 static IBOOL find_boot(const char *name, const char *ext, IBOOL direct_pathp,
                        int fd,
                        IBOOL errorp) {
-  Sset_verbose(1);
   char pathbuf[BOOT_PATH_MAX], buf[BOOT_PATH_MAX];
   uptr n = 0;
   INT c;

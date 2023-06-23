@@ -532,7 +532,7 @@ void S_pb_interp(ptr tc, void *bytecode) {
 #ifdef WASM_PBCHUNK
     case 229: // wasm_pb_chunk
      //printf("wasm_pb_chunk\n");
-      //printf("wasm_pb_chunk_index: %d\n ", INSTR_ii_high(instr));
+     // printf("wasm_pb_chunk_index: %d\n ", INSTR_ii_high(instr));
       //printf("current ip is: %p\n", ip);
       //dump_machine_state(ms);
       next_ip = TO_VOIDP(wasm_do_jump(INSTR_ii_high(instr), ms, TO_PTR(ip)));

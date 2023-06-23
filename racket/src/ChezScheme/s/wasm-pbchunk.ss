@@ -2,7 +2,6 @@
 ;; instead of references to C-chunks however, it generates references to chunks in Wasm (in WAT form).
 ;; Another major difference is the lack of local branching; For now, chunks can only be 
 ;; basic blocks.
-
 (let ()
 
   (include "strip-types.ss")
@@ -54,7 +53,7 @@
 
 
 ;; Utilities
-
+(define collect-stats (make-parameter (lambda () #f)))
 
 (define (write-chunk-registration output-port chunk-function-names)
   ;; write $_chunksig type and $chunks table declaration to module
@@ -100,10 +99,18 @@
 (define (fasl-wasm-pbchunk! who output-file-name only-funcs exclude-funcs start-index entry* handle-entry finish-fasl-update)
   ;; invokes search-pbchunk! on provided fasl entries, in sequence, returning the index of the final
   ;; returned chunk
-
+  (define chunklet-lengths (make-hash-table))
+  (define (store-length name chunklet)
+      (let ([c-len (/ (- (chunklet-end-i chunklet) (chunklet-start-i chunklet)) 
+                      instr-bytes)])
+          (hashtable-update! chunklet-lengths name 
+            (lambda (lengths) (cons (fixnum->flonum c-len) lengths))
+            '())))
+          
   (define (search-entries entry* start-index output-port)
     (let ([seen-table (make-eq-hashtable)])
-      (let loop ([entry* entry*] [index start-index])
+      (let ([end 
+              (let loop ([entry* entry*] [index start-index])
                   (cond
                     [(null? entry*) index]
                     [else
@@ -113,7 +120,10 @@
                           (loop (cdr entry*) index))
                         (lambda (situation x)
                           (loop (cdr entry*)
-                                (search-pbchunk! x output-port index seen-table only-funcs exclude-funcs))))]))))
+                            (parameterize ([collect-stats store-length])
+                              (search-pbchunk! x output-port index seen-table only-funcs exclude-funcs)))))]))])
+            end)))
+    
 
   ;; for now, we utilize a single string port for writing WAT output
   (let-values ([(output-port get) (open-string-output-port)])
@@ -122,6 +132,13 @@
 
       ;; before continuing, write out updated fasl:
       (finish-fasl-update)
+
+      (hash-table-for-each chunklet-lengths 
+        (lambda (name lengths)
+          (printf "code: ~a\n" name)
+          (let ([avg-chunk-len (fl/ (fold-left fl+ 0. lengths) 
+                                    (fixnum->flonum (length lengths)))])
+            (printf "\taverage chunk length: ~a\n" avg-chunk-len))))
 
       (let ()
         (define generated-chunk-names 
@@ -466,33 +483,21 @@
 (define (advance-labels labels i)
   (advance labels label-to i))
 
-(define (ensure-label i labels)
-  (cond
-    [(and (pair? labels)
-          (fx= i (label-to (car labels))))
-     (let ([l (car labels)])
-       (cons (make-label i
-                         (fxmin i (label-min-from l))
-                         (fxmax i (label-max-from l))
-                         (cons i (label-all-from l)))
-             (cdr labels)))]
-    [(and (pair? labels)
-          (fx> i (label-to (car labels))))
-     (cons (car labels) (ensure-label i (cdr labels)))]
-    [else
-     (cons (make-label i i i (list i))
-           labels)]))
-
 (define (sort-and-combine-labels labels)
+  ; sort labels by offset into the code object
   (let ([labels (sort (lambda (a b) (< (label-to a) (label-to b))) labels)])
     (let remove-dups ([labels labels])
       (cond
+        ; list of zero or 1 labels has no duplicates
         [(null? labels) '()]
         [(null? (cdr labels)) labels]
         [else
+        ; since we've sorted, duplicate labels will be adjacent in the list. Labels are duplicates iff their label-to fields are equal
          (let ([a (car labels)]
                [b (cadr labels)])
            (if (fx= (label-to a) (label-to b))
+                ; merge labels with identical offset together into one, ensuring that we encompass
+                ; the min-from and max-from of both 
                (remove-dups (cons (make-label (label-to a)
                                               (fxmin (label-min-from a)
                                                      (label-min-from b))
@@ -517,12 +522,13 @@
   (let write-loop ([wasm wasm])
     (unless (null? wasm)
       (let ([cur (car wasm)])
-      (cond
-        [(is-comment? cur) (printf "~s\n" cur) (fprintf o "\t~a\n" (comment-string cur))]
-        [else (fprintf o "\t~a\n" cur)]))
-          (write-loop (cdr wasm)))))
+        (cond
+          [(is-comment? cur) 
+            (fprintf o "\t~a\n" (comment-string cur))]
+          [else 
+            (fprintf o "\t~a\n" cur)]))
+        (write-loop (cdr wasm)))))
 
-;; Found a code object, maybe generate a chunk
 (define (chunk-code! name bv vreloc ci only-funcs exclude-funcs)
   (let ([len (bytevector-length bv)]
         [o (chunk-info-code-op ci)]
@@ -552,7 +558,6 @@
                    [else
                     (let-values ([(start-i end-i uses-flag?)
                                   (select-instruction-range bv i len relocs headers labels)])
-                      (display (format "instruction range for chunk: ~a ~a\n" start-i end-i))
                       (when (fx= i end-i)
                         ($oops 'chunk-code "failed to make progress at ~a out of ~a" i len))
                       (let ([continue-only? #f])
@@ -577,9 +582,10 @@
                     (unless (empty-chunklet? c)
                       (emit-wasm-chunk-header o index #f (chunklet-uses-flag? c)))
                     
-                    (unless (empty-chunklet? c)
-                      (display (format "chunklet-i: ~a; chunklet-start-i: ~a; chunklet-end-i: ~a\n"
-                        (chunklet-i c) (chunklet-start-i c) (chunklet-end-i c))))
+                    ((collect-stats) name c)
+                    ; (unless (empty-chunklet? c)
+                    ;   (display (format "chunklet-i: ~a; chunklet-start-i: ~a; chunklet-end-i: ~a\n"
+                    ;     (chunklet-i c) (chunklet-start-i c) (chunklet-end-i c))))
 
                     (let ([compiled-wasm 
                             (compile-chunklet o bv
@@ -600,14 +606,17 @@
                     (loop (cdr chunklets) (if (empty-chunklet? c) index (fx+ index 1))))]))]
              )))))
 
-;; Find all branch targets in the code object
+;; Find all branch targets and headers within the code object
 (define (gather-targets bv len)
   (let loop ([i 0] [headers '()] [labels '()])
     (cond
       [(fx= i len) (values '() (sort-and-combine-labels labels))]
+
+      ; if the current offset is the start of a header
       [(and (pair? headers)
             (fx= i (caar headers)))
        (let ([size (cdar headers)])
+        ; skip over number of bytes equal to header size, and recurse
          (let ([i (+ i size)])
            (let-values ([(rest-headers labels) (loop i (cdr headers) labels)])
              (values (cons (car headers) rest-headers)
@@ -621,10 +630,15 @@
          (define (next/add-label new-label)
            (loop (fx+ i instr-bytes) headers (cons new-label labels)))
 
+        ; If we encounter an adr with non-zero offset, there should be an rp-header immediately preceding the target
+        ; address. We need the first byte to determine the size (rp-header or rp-compact header)
+        ; and then add the header to the list
          (define (next/adr)
            (let ([delta (fx* instr-bytes (instr-adr-imm instr))])
              (cond
                [(> delta 0)
+                ; `after` address should be the byte immediately following the END of an rp-header, so the header
+                ; is the `size` number of bytes before
                 (let* ([after (fx+ i instr-bytes delta)]
                        [size (if (fx= 1 (fxand 1 (bytevector-u8-ref bv (fx- after
                                                                             (if (eq? (constant fasl-endianness) 'little)
@@ -661,10 +675,6 @@
 
          (instruction-cases instr dispatch))])))
 
-;; want to select only chunks that have supported instructions in them
-;; additional chunking rules should stay in place, but we need to
-;; stop chunks anytime there is a branch
-
 ;; Select next chunklet within a code object
 (define (select-instruction-range bv i len relocs headers labels)
   (let loop ([i i] [relocs relocs] [headers headers] [labels labels] [start-i #f]
@@ -681,8 +691,7 @@
          [start-i
           ;; we want to start a new chunk after the header, so end this one
           (values start-i i uses-flag?)]
-         [else ; start-i is non-zero, so advance current offset i by
-               ; the size of the header whose start index we match
+         [else ;; start-i is not set, so re-start chunk search after header
           (let* ([size (cdar headers)]
                  [i (+ i size)])
             (loop i
@@ -694,34 +703,44 @@
                   uses-flag?))])]
       [(and (pair? labels)
             (fx= i (label-to (car labels))))
-       ;; we want to stop at this label if it's a target outside the range
-       ;; that we're trying to build
-       (cond
-         [(< (label-min-from (car labels)) (or start-i i))
-          ;; target from jump before this chunk
           (if start-i
-              (values start-i i uses-flag?)
-              (loop i relocs headers (cdr labels) #f #f uses-flag?))]
-         [(< (label-max-from (car labels)) i)
-          ;; always a forward jump within this chunk
-          (loop i relocs headers (cdr labels) start-i #f uses-flag?)]
-         [else
-          ;; some backward jump exists, but tenatively assume that
-          ;; it's within the chunk, then check;
-          ;; WARNING: this makes overall chunking not linear-time, but
-          ;; it's probably ok in practice
-          (let-values ([(maybe-start-i end-i maybe-uses-flag?)
-                        (loop i relocs headers (cdr labels) start-i #f uses-flag?)])
-            (cond
-              [(fx>= maybe-start-i i)
-               ;; chunk here or starts later, anyway
-               (values maybe-start-i end-i maybe-uses-flag?)]
-              [(fx< (label-max-from (car labels)) end-i)
-               ;; backward jumps stay within chunk
-               (values maybe-start-i end-i maybe-uses-flag?)]
-              [else
-               ;; not within chunk
-               (values start-i i uses-flag?)]))])]
+            (values start-i i uses-flag?)
+            (loop i relocs headers (cdr labels) #f #f uses-flag?))]
+      ;  ;; we want to stop at this label if it's a target outside the range
+      ;  ;; that we're trying to build
+      ;  (cond
+      ;    [(< (label-min-from (car labels)) (or start-i i))
+      ;     ;; target from jump before this chunk
+      ;     (if start-i
+      ;         ; if we have started a chunk, then we need to stop it here, as we cannot include this label
+      ;         (values start-i i uses-flag?)
+      ;         ; if we have not started a chunk, continue searching after this label
+      ;         (loop i relocs headers (cdr labels) #f #f uses-flag?))]
+      ;   ;; at this point, we know that (label-min-from (car labels)) >= start-i, so 
+      ;   ;; must check if (label-max-from (car labels)) < i
+      ;    [(< (label-max-from (car labels)) i)
+      ;     ;; always a forward jump within this chunk, we can continue chunking
+      ;     (loop i relocs headers (cdr labels) start-i #f uses-flag?)]
+      ;    [else
+      ;     ;; Some backward jump exists. Assume that the backward jump will come
+      ;     ;; from a location further along in our current chunk, and then check to see if this is
+      ;     ;; actually the case.
+      ;     ;; WARNING: this makes overall chunking not linear-time, but
+      ;     ;; it's probably ok in practice
+      ;     (let-values ([(maybe-start-i end-i maybe-uses-flag?)
+      ;                   (loop i relocs headers (cdr labels) start-i #f uses-flag?)])
+      ;       (cond
+      ;         [(fx>= maybe-start-i i)
+      ;          ;; Chunk starts either AT our current offset i, or beyond it,
+      ;          ;; so use the new start, maybe-start-i as our start. This means that the current label
+      ;          ;; won't be included as part of the chunk we're building anyway
+      ;          (values maybe-start-i end-i maybe-uses-flag?)]
+      ;         [(fx< (label-max-from (car labels)) end-i)
+      ;          ;; backward jumps stay within chunk
+      ;          (values maybe-start-i end-i maybe-uses-flag?)]
+      ;         [else
+      ;          ;; not within chunk
+      ;          (values start-i i uses-flag?)]))])]
       [(and (pair? relocs)
             (fx>= i (car relocs)))
        ($oops 'pbchunk "landed at a relocation")]
@@ -816,13 +835,9 @@
       `((return (i32.add (local.get $ip) (i32.const ,(code-rel base-i next-instr)))))))
   
   (let loop ([i i] [relocs relocs] [headers headers] [labels labels] [generated (list)])
-    (printf "i: ~a\n" i)
-    (printf "end-i: ~a\n" end-i)
-    
     (cond
       [(and (pair? headers)
             (fx= i (caar headers)))
-          (printf "at header: ~a\n" i)
         (let ([size (cdar headers)])
           (cond
             [(fx>= i start-i)
@@ -841,7 +856,6 @@
                         labels
                         generated))]))]
       [(fx= i end-i)
-        (printf "i:~a HIT CHUNK END\n" i)
         (emit-return generated i)]
       [(and (pair? labels)
             (fx= i (label-to (car labels))))
@@ -936,24 +950,24 @@
                     (lambda ()
                       (emit-pb-mov16-pb-zero-bits-pb-shift 
                         (instr-di-dest instr)
-                        (instr-di-imm instr)
+                        (bitwise-and (instr-di-imm instr) #xFFFF)
                         #,(case (datum shift)
                           [(shift0) 0]
-                          [(shift1) 16]
-                          [(shift2) 32]
-                          [(shift3) 48])
+                          [(shift1) 1]
+                          [(shift2) 2]
+                          [(shift3) 3])
                         '$ms)))]
                [(_ op di/u mov16/k shift) 
                   #`(di-form 'op
                       (lambda ()
                         (emit-pb-mov16-pb-keep-bits-pb-shift 
                           (instr-di-dest instr)
-                          (instr-di-imm instr)
+                          (bitwise-and (instr-di-imm instr) #xFFFF)
                           #,(case (datum shift)
                             [(shift0) 0]
-                            [(shift1) 16]
-                            [(shift2) 32]
-                            [(shift3) 48])
+                            [(shift1) 1]
+                            [(shift2) 2]
+                            [(shift3) 3])
                           '$ms)))]
 
               ; mov
@@ -1201,5 +1215,8 @@
     [(indirect g i) (extract-name (vector-ref g i))]
     [else "???"]))
 
-    (set-who! $fasl-wasm-pbchunk! fasl-wasm-pbchunk!)
-)
+    (set-who! $fasl-wasm-pbchunk! fasl-wasm-pbchunk!))
+
+; (set-who! $fasl-wasm-pbchunk!
+;   (lambda args
+;     ($oops 'fasl-wasm-pbchunk-convert-file "not supported for this machine configuration")))

@@ -34,7 +34,7 @@
         (else
          (error #f "No derivation method available"))))
 
-(define (main . args)
+(define (deriv-main . args)
   (let* ((count (car args))
          (input1 (cadr args))
          (output (caddr args))
@@ -45,9 +45,3 @@
      count
      (lambda () (deriv (hide count input1)))
      (lambda (result) (equal? result output)))))
-
-(main 10000000 
-    '(+ (* 3 x x) (* a x x) (* b x) 5)
-    '(+ (* (* 3 x x) (+ (/ 0 3) (/ 1 x) (/ 1 x)))
-        (* (* a x x) (+ (/ 0 a) (/ 1 x) (/ 1 x)))
-        (* (* b x) (+ (/ 0 b) (/ 1 x))) 0))

@@ -1,0 +1,33 @@
+
+
+
+fl* fl+ fl>? fl<? fl>=? fl<=? 
++ - * / 
+fx+ fx* fx- fx/
+inexact
+
+>= <= > < =
+and or not
+
+vector-set!
+vector-ref
+vector->list
+vector
+
+list->vector
+list
+list?
+
+car
+cdr
+caddr
+cons
+pair?
+
+
+eq?
+equal?
+
+
+
+

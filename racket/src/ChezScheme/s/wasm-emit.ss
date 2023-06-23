@@ -64,11 +64,10 @@
       ,(generate-regs-lhs dest ms 8 $0)
       (local.get ,$0)
         ,(case shift
-          [(0) `(i32.const ,imm-unsigned)]
-          [(1) `((i32.const ,imm-unsigned) (i32.const 16) (i32.shl))]
-          [(2) `((i32.const ,imm-unsigned) (i32.const 32) (i32.shl))]
-          [(3) `((i32.const ,imm-unsigned) '(i32.const 48) '(i32.shl))])
-          (i64.extend_i32_s)
+          [(0) `(i64.const ,imm-unsigned)]
+          [(1) `((i64.const ,imm-unsigned) (i64.const 16) (i64.shl))]
+          [(2) `((i64.const ,imm-unsigned) (i64.const 32) (i64.shl))]
+          [(3) `((i64.const ,imm-unsigned) (i64.const 48) (i64.shl))])
           (i64.store)))
 
   (define (emit-pb-mov16-pb-keep-bits-pb-shift dest imm-unsigned shift ms)
@@ -78,11 +77,10 @@
               [$2 i64]))
       ,(generate-regs-lhs dest ms 8 $0)
       ,(case shift
-          [(0) `(i32.const ,imm-unsigned)]
-          [(1) `((i32.const ,imm-unsigned) (i32.const 16) (i32.shl))]
-          [(2) `((i32.const ,imm-unsigned) (i32.const 32) (i32.shl))]
-          [(3) `((i32.const ,imm-unsigned) (i32.const 48) (i32.shl))])
-      (i64.extend_i32_s)
+          [(0) `(i64.const ,imm-unsigned)]
+          [(1) `((i64.const ,imm-unsigned) (i64.const 16) (i64.shl))]
+          [(2) `((i64.const ,imm-unsigned) (i64.const 32) (i64.shl))]
+          [(3) `((i64.const ,imm-unsigned) (i64.const 48) (i64.shl))])
       (local.set ,$1)
 
       ,(load-and-set $0 $2 'i64)
@@ -326,7 +324,6 @@
 
         (f64.store)))
 
-  
   (define (do-pb-fp-cmp-op cmp-op op1 op2)
     (wasm-emit
       (local.get ,op1)
