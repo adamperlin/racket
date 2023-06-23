@@ -1,0 +1,210 @@
+
+****************************
+Benchmarking Petite on Thu Jun 1 12:07:05 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing fib under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Exception: attempt to reference unbound identifier scheme-start at line 65, char 2 of /tmp/larcenous/fib.sch
+
+real	0m0.093s
+user	0m0.061s
+sys	0m0.018s
+
+****************************
+Benchmarking Petite on Thu Jun 1 12:10:33 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing fib under Petite
+./bench: line 174: [: =~: binary operator expected
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running fib:40:1
+
+****************************
+Benchmarking Petite on Thu Jun 1 12:10:59 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing fib under Petite
+./bench: line 174: [: =~: binary operator expected
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running fib:40:1
+
+****************************
+Benchmarking Petite on Thu Jun 1 12:11:29 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing fib under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running fib:40:1
+
+real	2m16.137s
+user	2m15.674s
+sys	0m0.207s
+
+****************************
+Benchmarking Petite on Thu Jun 1 12:14:29 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing browse under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running browse:1000
+
+real	2m50.154s
+user	2m47.951s
+sys	0m0.850s
+
+****************************
+Benchmarking Petite on Thu Jun 1 12:18:56 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing browse under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running browse:1000
+
+real	2m45.994s
+user	2m44.836s
+sys	0m0.504s
+
+Testing deriv under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running deriv:10000000
+
+real	2m16.156s
+user	2m14.473s
+sys	0m0.616s
+
+Testing dderiv under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running dderiv:10000000
+
+real	4m16.732s
+user	4m15.221s
+sys	0m0.694s
+
+Testing destruc under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running destruc:600:50:1000
+
+real	1m45.720s
+user	1m44.618s
+sys	0m0.504s
+
+Testing diviter under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running diviter:1000:1000000
+
+real	4m12.828s
+user	4m10.270s
+sys	0m1.078s
+
+Testing divrec under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running divrec:1000:1000000
+
+real	3m42.237s
+user	3m39.478s
+sys	0m1.240s
+
+Testing puzzle under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running puzzle:500
+
+real	6m8.489s
+user	6m5.537s
+sys	0m1.288s
+
+Testing triangl under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running triangl:22:1:50
+
+real	9m1.103s
+user	8m53.987s
+sys	0m3.134s
+
+Testing tak under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running tak:32:16:8:10
+
+real	3m38.674s
+user	3m37.226s
+sys	0m0.649s
+
+Testing takl under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running takl:32:16:8:2
+
+real	8m13.655s
+user	8m9.879s
+sys	0m1.650s
+
+Testing ntakl under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running ntakl:32:16:8:2
+
+real	8m0.987s
+user	7m57.904s
+sys	0m1.417s
+
+Testing cpstak under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running cpstak:32:16:8:5
+
+real	5m45.221s
+user	5m43.061s
+sys	0m1.015s
+
+Testing ctak under Petite
+Compiling...
+Running...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Running ctak:32:16:8:1
+
+real	1m16.324s
+user	1m15.863s
+sys	0m0.222s

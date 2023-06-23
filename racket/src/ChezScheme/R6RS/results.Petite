@@ -1,0 +1,132 @@
+
+****************************
+Benchmarking Petite on Thu Jun 1 13:45:42 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing fib under Petite
+Compiling...
+Running...
+Running fib:40:1
+
+real	0m6.271s
+user	0m6.238s
+sys	0m0.021s
+
+****************************
+Benchmarking Petite on Thu Jun 1 13:45:58 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing browse under Petite
+Compiling...
+Running...
+Running browse:1000
+
+real	0m7.590s
+user	0m7.555s
+sys	0m0.023s
+
+Testing deriv under Petite
+Compiling...
+Running...
+Running deriv:10000000
+
+real	0m5.033s
+user	0m5.000s
+sys	0m0.022s
+
+Testing dderiv under Petite
+Compiling...
+Running...
+Running dderiv:10000000
+
+real	0m8.915s
+user	0m8.873s
+sys	0m0.029s
+
+Testing destruc under Petite
+Compiling...
+Running...
+Running destruc:600:50:1000
+
+real	0m4.456s
+user	0m4.426s
+sys	0m0.020s
+
+Testing diviter under Petite
+Compiling...
+Running...
+Running diviter:1000:1000000
+
+real	0m9.559s
+user	0m9.521s
+sys	0m0.026s
+
+Testing divrec under Petite
+Compiling...
+Running...
+Running divrec:1000:1000000
+
+real	0m8.958s
+user	0m8.920s
+sys	0m0.026s
+
+Testing puzzle under Petite
+Compiling...
+Running...
+Running puzzle:500
+
+real	0m15.281s
+user	0m15.236s
+sys	0m0.029s
+
+Testing triangl under Petite
+Compiling...
+Running...
+Running triangl:22:1:50
+
+real	0m19.666s
+user	0m19.617s
+sys	0m0.029s
+
+Testing tak under Petite
+Compiling...
+Running...
+Running tak:32:16:8:10
+
+real	0m8.868s
+user	0m8.837s
+sys	0m0.019s
+
+Testing takl under Petite
+Compiling...
+Running...
+Running takl:32:16:8:2
+
+real	0m19.880s
+user	0m19.839s
+sys	0m0.024s
+
+Testing ntakl under Petite
+Compiling...
+Running...
+Running ntakl:32:16:8:2
+
+real	0m19.846s
+user	0m19.804s
+sys	0m0.025s
+
+Testing cpstak under Petite
+Compiling...
+Running...
+Running cpstak:32:16:8:5
+
+real	0m15.906s
+user	0m15.849s
+sys	0m0.040s
+
+Testing ctak under Petite
+Compiling...
+Running...
+Running ctak:32:16:8:1
+
+real	0m3.287s
+user	0m3.255s
+sys	0m0.023s

@@ -1,0 +1,339 @@
+Benchmarking chez_wasmpb on Wed May 24 19:48:13 PDT 2023 under Darwin MacBook-Pro-51.local 20.5.0 Darwin Kernel Version 20.5.0: Sat May 8 05:10:33 PDT 2021; root:xnu-7195.121.3~9/RELEASE_X86_64 x86_64
+
+Testing browse under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/browse.scm with output to /tmp/larcenous/browse.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./browse.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running browse:1000
+
+real	0m32.892s
+user	0m32.971s
+sys	0m0.349s
+
+Testing deriv under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/deriv.scm with output to /tmp/larcenous/deriv.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./deriv.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running deriv:10000000
+
+real	0m56.577s
+user	0m56.610s
+sys	0m0.537s
+
+Testing dderiv under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/dderiv.scm with output to /tmp/larcenous/dderiv.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./dderiv.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running dderiv:10000000
+
+real	1m18.293s
+user	1m17.781s
+sys	0m0.621s
+
+Testing destruc under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/destruc.scm with output to /tmp/larcenous/destruc.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./destruc.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running destruc:600:50:1000
+
+real	0m19.305s
+user	0m19.459s
+sys	0m0.283s
+
+Testing diviter under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/diviter.scm with output to /tmp/larcenous/diviter.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./diviter.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running diviter:1000:1000000
+
+real	0m41.985s
+user	0m42.236s
+sys	0m0.481s
+
+Testing divrec under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/divrec.scm with output to /tmp/larcenous/divrec.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./divrec.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running divrec:1000:1000000
+
+real	1m15.682s
+user	1m15.543s
+sys	0m0.631s
+
+Testing puzzle under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/puzzle.scm with output to /tmp/larcenous/puzzle.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./puzzle.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running puzzle:500
+
+real	1m9.261s
+user	1m9.165s
+sys	0m0.482s
+
+Testing triangl under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/triangl.scm with output to /tmp/larcenous/triangl.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./triangl.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running triangl:22:1:50
+
+real	20m8.279s
+user	1m55.629s
+sys	0m0.620s
+
+Testing tak under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/tak.scm with output to /tmp/larcenous/tak.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./tak.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running tak:32:16:8:10
+
+real	0m58.032s
+user	0m57.708s
+sys	0m0.412s
+
+Testing takl under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/takl.scm with output to /tmp/larcenous/takl.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./takl.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running takl:32:16:8:2
+
+real	1m22.618s
+user	1m22.207s
+sys	0m0.505s
+
+Testing ntakl under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/ntakl.scm with output to /tmp/larcenous/ntakl.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./ntakl.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running ntakl:32:16:8:2
+
+real	1m22.791s
+user	1m22.470s
+sys	0m0.490s
+
+Testing cpstak under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/cpstak.scm with output to /tmp/larcenous/cpstak.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./cpstak.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running cpstak:32:16:8:5
+
+real	0m38.000s
+user	0m38.144s
+sys	0m0.447s
+
+Testing ctak under chez_wasmpb
+Compiling...
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/scheme.boot...opened
+version and machine type check
+trying /usr/local/lib/csv9.9.9-pre-release.16/pb64l/petite.boot...opened
+version and machine type check
+Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+> compiling /tmp/larcenous/ctak.scm with output to /tmp/larcenous/ctak.so
+> > 
+Configuring for pb64l in em-pb64l
+Running...
+trying ./ctak.boot...opened
+version and machine type check
+trying ./petite.boot...opened
+version and machine type check
+Petite Chez Scheme Version 9.9.9-pre-release.16
+Copyright 1984-2022 Cisco Systems, Inc.
+
+Running ctak:32:16:8:1
+
+real	0m33.213s
+user	0m33.427s
+sys	0m0.431s
