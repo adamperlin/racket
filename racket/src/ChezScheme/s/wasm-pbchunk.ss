@@ -2,6 +2,8 @@
 ;; instead of references to C-chunks however, it generates references to chunks in Wasm (in WAT form).
 ;; Another major difference is the lack of local branching; For now, chunks can only be 
 ;; basic blocks.
+
+(if-feature pbchunk
 (let ()
 
   (include "strip-types.ss")
@@ -23,10 +25,12 @@
 
 
 ;; Holdover from the original PBChunk. 
-;; A chunklet represents a potential entry point into a code
-;; object. It may have a prefix before the entry point that
-;; is not generated as in C. A code object can have multiple
-;; chunklets or just one.
+
+;; (ORIGINAL COMMENT
+;;    A chunklet represents a potential entry point into a code
+;;    object. It may have a prefix before the entry point that
+;;    is not generated as in C. A code object can have multiple
+;;    chunklets or just one)
 
 ;; Note that in wasm-pbchunk, the relocs, header, and labels fields go 
 ;; more or less unused, but they are kept since there is a large possibility that 
@@ -52,9 +56,24 @@
   (nongenerative))
 
 
-;; Utilities
+;; A parameter used for collecting statistics about chunk length. Unused at the moment
 (define collect-stats (make-parameter (lambda () #f)))
 
+;; Utility function
+(define (range n)
+  (unless (and (integer? n) (>= n 0))
+    ($oops "range: expected non-negative integer"))
+    (let loop ([i 0])
+      (cond 
+        [(< i n) (cons i (loop (add1 i)))]
+        [else '()])))
+
+;; Writes chunk registration table to the output module. The registration table looks like:
+;; (table $chunks <n> funcref
+;;    (elem (i32.const 0) $chunk_0)
+;;    (elem (i32.const 1) $chunk_1)
+;;    ...
+;; )
 (define (write-chunk-registration output-port chunk-function-names)
   ;; write $_chunksig type and $chunks table declaration to module
   (put-string output-port
@@ -68,7 +87,9 @@
       (write-table-elems (cdr todo-fns) (add1 n))))
   (newline output-port) 
 
-  ;; write wasm_pbchunk_register function
+  ;; Generate the $wasm_pbchunk_register function, which initializes the table. 
+  ;; This is needed due to Wasm static initialization weirdness. Just declaring a table of funcrefs
+  ;; is not enough and each element needs to be manually set for some reason
   (put-string output-port "(func $wasm_pbchunk_register (export \"wasm_pbchunk_register\")\n")
   (let initialize-table ([todo-fns chunk-function-names] [n 0])
     (unless (null? todo-fns)
@@ -77,7 +98,7 @@
   (put-string output-port ")")
   (newline output-port)
 
-  ;; write wasm_do_jump helper which takes an index and uses it to dispatch into the table
+  ;; Emit $wasm_do_jump helper, which takes an index and uses it to dispatch into the table
   ;; of wasm chunks; avoids linker issues when attempting to call into a handwritten wasm
   ;; table from a C file
   (put-string output-port
@@ -88,13 +109,19 @@
 				  (i32.wrap_i64 (local.get $ip))
 				  (local.get $idx))))"))
 
-(define (range n)
-  (unless (and (integer? n) (>= n 0))
-    ($oops "range: expected non-negative integer"))
-    (let loop ([i 0])
-      (cond 
-        [(< i n) (cons i (loop (add1 i)))]
-        [else '()])))
+;; The core pbchunk entry point. Note that the code here is very similar to the original pbchunk, 
+;; with a similar signature.
+;; Params:
+  ;; who:
+  ;; output-file-name: name of the output file for generated chunks
+  ;; only-funcs: chunk only the list of provided function names
+  ;; exclude-funcs: exclude the provided function names, chunking everything else (cannot be used in conjunction with 
+  ;; only-funcs)
+  ;; start-index: what number do we start counting up from when numbering the chunks?
+  ;; entry*: a list of Fasl entries, which are pieces of binary data to search
+  ;; handle-entry: a passed-in entry handler which knows how to parse through fasl data
+  ;; finish-fasl-update
+;; Return: the index of the last generated chunk from this boot file
 
 (define (fasl-wasm-pbchunk! who output-file-name only-funcs exclude-funcs start-index entry* handle-entry finish-fasl-update)
   ;; invokes search-pbchunk! on provided fasl entries, in sequence, returning the index of the final
@@ -123,7 +150,6 @@
                             (parameterize ([collect-stats store-length])
                               (search-pbchunk! x output-port index seen-table only-funcs exclude-funcs)))))]))])
             end)))
-    
 
   ;; for now, we utilize a single string port for writing WAT output
   (let-values ([(output-port get) (open-string-output-port)])
@@ -156,7 +182,6 @@
                    (k output-port)))))
         
         ;; given an output-port, writes a WAT module to the output port, 
-        ;; including e
         (define (write-module output-port)
                 ; begin module
                 (put-string output-port
@@ -178,11 +203,11 @@
         ;; files written; return index after last chunk
         end-index))))
 
-;; PBChunk holdover
-;; The main pbchunk handler: takes a fasl object in "strip.ss" form,
-;; find code objects inside, and potentially generates chunks and updates
-;; the code object with references to chunks. Takes the number of
-;; chunks previously written and returns the total number written after.
+;; (OC
+;;    The main pbchunk handler: takes a fasl object in "strip.ss" form,
+;;    find code objects inside, and potentially generates chunks and updates
+;;    the code object with references to chunks. Takes the number of
+;;    chunks previously written and returns the total number written after)
 (define (search-pbchunk! v code-op start-index seen-table only-funcs exclude-funcs)
   (let ([ci (make-chunk-info start-index
                              seen-table
@@ -239,7 +264,7 @@
                       vpfasl)]
     [(indirect g i) (chunk! (vector-ref g i) ci only-funcs exclude-funcs)]
     [else
-     ;; nothing else contains references that can reach code
+     ;; (OC: nothing else contains references that can reach code)
      (void)]))
 
 (define min-chunk-len 3)
@@ -273,12 +298,13 @@
   (unless (eqv? index (bitwise-and index #xFFFF))
     ($oops 'pbchunk "chunk index ~a is too large" index))
   ;; TODO: add as constant
+  ;; PB opcode for Wasm-pbchunk instruction is 229
   (bitwise-ior 229
                (bitwise-arithmetic-shift-left 0 8)
                (bitwise-arithmetic-shift-left index 16)))
 
 ;; PBChunk holdover
-;; expands to a binary search for the right case
+;; (OC expands to a binary search for the right case)
 (define-syntax (instruction-case stx)
   (syntax-case stx ()
     [(_ instr emit [op . shape] ...)
@@ -300,15 +326,16 @@
                           #,(loop mid end)
                           #,(loop start mid)))]))))]))
 
-;; Convention:
-;; di = destination register and immediate
-;; dr = destination register and immediate
-;; etc.
-;; .../x = not handled, so return to interpret
-;; .../u = unsigned immediate
-;; .../f = sets flag
-;; .../b = branch, uses flag deending on branch kind
-;; .../c = foreign call
+;; (OC
+;;   Convention:
+;;   di = destination register and immediate
+;;   dr = destination register and immediate
+;;   etc.
+;;   .../x = not handled, so return to interpret
+;;   .../u = unsigned immediate
+;;   .../f = sets flag
+;;   .../b = branch, uses flag deending on branch kind
+;;   .../c = foreign call)
 
 ;; Note: pbchunk dispatches instructions to C-macros which perform
 ;; the work of the instruction. It is fairly straightforward to perform this mapping.
@@ -321,8 +348,9 @@
     [(_ instr emit)
      #'(instruction-case
         instr emit
-        ;; every instruction implemented in "pb.c" needs to be here,
-        ;; except for the `pb-chunk` instruction
+        ;; (OC
+        ;;    every instruction implemented in "pb.c" needs to be here,
+        ;;    except for the `pb-chunk` instruction)
         [pb-nop nop]
         [pb-literal literal]
         [pb-mov16-pb-zero-bits-pb-shift0 di/u mov16/z shift0]
@@ -466,7 +494,7 @@
         [pb-stack-call dr])]))
 
 ;; advances through a sorted list in order until the first occurrence
-;; of an item such that (sel e) >= i, where i is given
+;; of an item such that (sel e) >= i 
 (define (advance l sel i)
   (let loop ([l l])
     (cond
@@ -547,10 +575,10 @@
     (fprintf o "\n;; code ~a \n" name)
     (unless (or (equal? name "winder-dummy") 
                 (if (pair? only-funcs) (not (member name only-funcs)) #f)
-                (if (pair? exclude-funcs) (member name exclude-funcs)  #f)) ; hack to avoid special rp header in dounderflow
+                (if (pair? exclude-funcs) (member name exclude-funcs)  #f)) ; (OC hack to avoid special rp header in dounderflow)
       (display (format "name: ~a\n" name))
       (let ([chunklets
-             ;; use `select-instruction-range` to partition the code into chunklets
+             ;; (OC: use `select-instruction-range` to partition the code into chunklets)
              (let-values ([(headers labels) (gather-targets bv len)])
                (let loop ([i 0] [relocs relocs] [headers headers] [labels labels])
                  (cond
@@ -606,7 +634,7 @@
                     (loop (cdr chunklets) (if (empty-chunklet? c) index (fx+ index 1))))]))]
              )))))
 
-;; Find all branch targets and headers within the code object
+;; (OC: Find all branch targets and headers within the code object)
 (define (gather-targets bv len)
   (let loop ([i 0] [headers '()] [labels '()])
     (cond
@@ -649,7 +677,7 @@
                        [start (fx- after size)]
                        [header (cons start size)])
                   (loop (fx+ i instr-bytes)
-                        ;; insert keeping headers sorted
+                        ;; (OC: insert keeping headers sorted)
                         (let loop ([headers headers])
                           (cond
                             [(null? headers) (list header)]
@@ -675,7 +703,7 @@
 
          (instruction-cases instr dispatch))])))
 
-;; Select next chunklet within a code object
+;; (OC: Select next chunklet within a code object)
 (define (select-instruction-range bv i len relocs headers labels)
   (let loop ([i i] [relocs relocs] [headers headers] [labels labels] [start-i #f]
              [flag-ready? #f] [uses-flag? #f])
@@ -706,41 +734,6 @@
           (if start-i
             (values start-i i uses-flag?)
             (loop i relocs headers (cdr labels) #f #f uses-flag?))]
-      ;  ;; we want to stop at this label if it's a target outside the range
-      ;  ;; that we're trying to build
-      ;  (cond
-      ;    [(< (label-min-from (car labels)) (or start-i i))
-      ;     ;; target from jump before this chunk
-      ;     (if start-i
-      ;         ; if we have started a chunk, then we need to stop it here, as we cannot include this label
-      ;         (values start-i i uses-flag?)
-      ;         ; if we have not started a chunk, continue searching after this label
-      ;         (loop i relocs headers (cdr labels) #f #f uses-flag?))]
-      ;   ;; at this point, we know that (label-min-from (car labels)) >= start-i, so 
-      ;   ;; must check if (label-max-from (car labels)) < i
-      ;    [(< (label-max-from (car labels)) i)
-      ;     ;; always a forward jump within this chunk, we can continue chunking
-      ;     (loop i relocs headers (cdr labels) start-i #f uses-flag?)]
-      ;    [else
-      ;     ;; Some backward jump exists. Assume that the backward jump will come
-      ;     ;; from a location further along in our current chunk, and then check to see if this is
-      ;     ;; actually the case.
-      ;     ;; WARNING: this makes overall chunking not linear-time, but
-      ;     ;; it's probably ok in practice
-      ;     (let-values ([(maybe-start-i end-i maybe-uses-flag?)
-      ;                   (loop i relocs headers (cdr labels) start-i #f uses-flag?)])
-      ;       (cond
-      ;         [(fx>= maybe-start-i i)
-      ;          ;; Chunk starts either AT our current offset i, or beyond it,
-      ;          ;; so use the new start, maybe-start-i as our start. This means that the current label
-      ;          ;; won't be included as part of the chunk we're building anyway
-      ;          (values maybe-start-i end-i maybe-uses-flag?)]
-      ;         [(fx< (label-max-from (car labels)) end-i)
-      ;          ;; backward jumps stay within chunk
-      ;          (values maybe-start-i end-i maybe-uses-flag?)]
-      ;         [else
-      ;          ;; not within chunk
-      ;          (values start-i i uses-flag?)]))])]
       [(and (pair? relocs)
             (fx>= i (car relocs)))
        ($oops 'pbchunk "landed at a relocation")]
@@ -804,6 +797,7 @@
              [_ #'(skip)]))
          (instruction-cases instr dispatch))])))
 
+;; Emits a wasm-pbchunk header to the provided output file `o`
 (define (emit-wasm-chunk-header o index sub-index? uses-flag?)
   (fprintf o 
     "(func $chunk_~a (export \"chunk_~a\")
@@ -818,6 +812,8 @@
 (define (emit-wasm-chunk-footer o)
   (fprintf o ")\n"))
 
+;; Simple helper to translate an index into a code object to an index
+;; relative to another base index.
 (define (code-rel base cur-i)
   (fx- cur-i base))
 
@@ -844,7 +840,6 @@
               (if (fx= i end-i) 
                   ;; if we are at the start of a header AND at the end of a chunk,
                   ;; finish off the chunk by returning the address after the header
-                  
                   (emit-return generated (fx+ i size))
                   ($oops 'emit-chunk "should have ended at header ~a/~a" i end-i))]
             [else
@@ -1217,6 +1212,6 @@
 
     (set-who! $fasl-wasm-pbchunk! fasl-wasm-pbchunk!))
 
-; (set-who! $fasl-wasm-pbchunk!
-;   (lambda args
-;     ($oops 'fasl-wasm-pbchunk-convert-file "not supported for this machine configuration")))
+ (set-who! $fasl-wasm-pbchunk!
+   (lambda args
+     ($oops 'fasl-wasm-pbchunk-convert-file "not supported for this machine configuration"))))
