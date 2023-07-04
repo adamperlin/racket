@@ -3,6 +3,9 @@
 ;; Another major difference is the lack of local branching; For now, chunks can only be 
 ;; basic blocks.
 
+;; Some conventions followed in this file:
+;; ; (OC: ...) is a comment from mflatt from the original version of pbchunk that is still present in this version
+
 (if-feature pbchunk
 (let ()
 
@@ -12,11 +15,7 @@
   ;; for a wasm module, what should the memory size be configured as? This is hardcoded as 10 64kb pages for now
   (define module-mem-size 10)
 
-  ;; Holdover configuration option from original pbchunk. `#t` is not practial for the boot files,
-  ;; but is needed for wasm to avoid dispatch to chunklets (or sub-chunks)
-  (define one-chunklet-per-chunk? #t)
-
-;; state for the chunk writer:
+;; (OC: state for the chunk writer)
 (define-record-type chunk-info
   (fields (mutable counter)
           seen
@@ -24,9 +23,7 @@
   (nongenerative))
 
 
-;; Holdover from the original PBChunk. 
-
-;; (ORIGINAL COMMENT
+;; (OC:
 ;;    A chunklet represents a potential entry point into a code
 ;;    object. It may have a prefix before the entry point that
 ;;    is not generated as in C. A code object can have multiple
@@ -35,6 +32,8 @@
 ;; Note that in wasm-pbchunk, the relocs, header, and labels fields go 
 ;; more or less unused, but they are kept since there is a large possibility that 
 ;; they will be needed in the future.
+
+; every field comment is (OC: ...)
 (define-record-type chunklet
   (fields i        ; code offset for this start of this chunklet
           start-i  ; code offset for the entry point (= end-i if there's no entry)
@@ -46,8 +45,9 @@
           labels)  ; list of `label`s, none before this chunklet but maybe some after
   (nongenerative))
 
-;; Holdover from original pbchunk
-;; A label within a chunklet, especially for interior branches
+
+;; (OC: A label within a chunklet, especially for interior branches)
+;; every field comment is (OC: ...)
 (define-record-type label
   (fields to        ; the label offset
           min-from  ; earliest offset that jumps here
@@ -203,7 +203,7 @@
         ;; files written; return index after last chunk
         end-index))))
 
-;; (OC
+;; (OC:
 ;;    The main pbchunk handler: takes a fasl object in "strip.ss" form,
 ;;    find code objects inside, and potentially generates chunks and updates
 ;;    the code object with references to chunks. Takes the number of
@@ -303,8 +303,7 @@
                (bitwise-arithmetic-shift-left 0 8)
                (bitwise-arithmetic-shift-left index 16)))
 
-;; PBChunk holdover
-;; (OC expands to a binary search for the right case)
+;; (OC: expands to a binary search for the right case)
 (define-syntax (instruction-case stx)
   (syntax-case stx ()
     [(_ instr emit [op . shape] ...)
@@ -326,7 +325,7 @@
                           #,(loop mid end)
                           #,(loop start mid)))]))))]))
 
-;; (OC
+;; (OC:
 ;;   Convention:
 ;;   di = destination register and immediate
 ;;   dr = destination register and immediate
@@ -337,7 +336,7 @@
 ;;   .../b = branch, uses flag deending on branch kind
 ;;   .../c = foreign call)
 
-;; Note: pbchunk dispatches instructions to C-macros which perform
+;; Note: C pbchunk dispatches instructions to C-macros which perform
 ;; the work of the instruction. It is fairly straightforward to perform this mapping.
 ;; For wasm, we need more information to distinguish between instructions, which is
 ;; why we add properties to the instruction shape such as `mov`, `binop`
@@ -348,7 +347,7 @@
     [(_ instr emit)
      #'(instruction-case
         instr emit
-        ;; (OC
+        ;; (OC:
         ;;    every instruction implemented in "pb.c" needs to be here,
         ;;    except for the `pb-chunk` instruction)
         [pb-nop nop]
@@ -541,9 +540,14 @@
            (chunklet-end-i c))
       (chunklet-continue-only? c)))
 
+; returns whether or not a wasm sexp is a comment
+; we represent comments as (comment "")
+; in our wasm representation, since we do want to include some generated comments
+; in wasm output
 (define (is-comment? wasm-sexp)
   (and (pair? wasm-sexp) (equal? (car wasm-sexp) 'comment)))
 
+; returns the comment string associated with a (comment ...) form
 (define (comment-string wasm-comment) (cdr wasm-comment))
 
 (define (write-compiled-wasm o wasm)
@@ -557,6 +561,7 @@
             (fprintf o "\t~a\n" cur)]))
         (write-loop (cdr wasm)))))
 
+; actually chunks a code object
 (define (chunk-code! name bv vreloc ci only-funcs exclude-funcs)
   (let ([len (bytevector-length bv)]
         [o (chunk-info-code-op ci)]
@@ -575,7 +580,7 @@
     (fprintf o "\n;; code ~a \n" name)
     (unless (or (equal? name "winder-dummy") 
                 (if (pair? only-funcs) (not (member name only-funcs)) #f)
-                (if (pair? exclude-funcs) (member name exclude-funcs)  #f)) ; (OC hack to avoid special rp header in dounderflow)
+                (if (pair? exclude-funcs) (member name exclude-funcs)  #f)) ; (OC: hack to avoid special rp header in dounderflow)
       (display (format "name: ~a\n" name))
       (let ([chunklets
              ;; (OC: use `select-instruction-range` to partition the code into chunklets)
@@ -595,44 +600,34 @@
                                     (advance-headers headers end-i)
                                     (advance-labels labels end-i)))))])))]
             [index (chunk-info-counter ci)])
-        ;; We can either generate each chunklet as its own chunk
-        ;; function or generate one chunk function with multiple
-        ;; chunklets
-          (cond
-            [one-chunklet-per-chunk?
-             (let loop ([chunklets chunklets] [index index])
-               (cond
-                 [(null? chunklets)
-                  (chunk-info-counter-set! ci index)]
-                 [else
+              (let loop ([chunklets chunklets] [index index])
+                (cond
+                  [(null? chunklets)
+                    (chunk-info-counter-set! ci index)]
+                  [else
                   (let ([c (car chunklets)])
                     ;; generate a non-empty chunk as its own function
                     (unless (empty-chunklet? c)
                       (emit-wasm-chunk-header o index #f (chunklet-uses-flag? c)))
-                    
                     ((collect-stats) name c)
-                    ; (unless (empty-chunklet? c)
-                    ;   (display (format "chunklet-i: ~a; chunklet-start-i: ~a; chunklet-end-i: ~a\n"
-                    ;     (chunklet-i c) (chunklet-start-i c) (chunklet-end-i c))))
 
                     (let ([compiled-wasm 
                             (compile-chunklet o bv
-                                   (chunklet-i c) (chunklet-start-i c)
-                                   (chunklet-relocs c) (chunklet-headers c) (chunklet-labels c)
-                                   (if (chunklet-continue-only? c)
-                                       (chunklet-end-i c)
-                                       (chunklet-start-i c))
-                                   (chunklet-end-i c)
-                                   (list c) ; `goto` branches contrained to this chunklet
-                                   ;; fallthrough?
-                                   (empty-chunklet? c))]) 
-                                   (write-compiled-wasm o (hoist-locals compiled-wasm)))
+                                    (chunklet-i c) (chunklet-start-i c)
+                                    (chunklet-relocs c) (chunklet-headers c) (chunklet-labels c)
+                                    (if (chunklet-continue-only? c)
+                                        (chunklet-end-i c)
+                                        (chunklet-start-i c))
+                                    (chunklet-end-i c)
+                                    (list c)
+                                    (empty-chunklet? c))]) 
+                                    (write-compiled-wasm o (hoist-locals compiled-wasm)))
 
-                    (unless (empty-chunklet? c)
-                      (emit-wasm-chunk-footer o)
-                      (bytevector-u32-set! bv (chunklet-start-i c) (make-wasm-chunk-instr index) (constant fasl-endianness)))
-                    (loop (cdr chunklets) (if (empty-chunklet? c) index (fx+ index 1))))]))]
-             )))))
+                      (unless (empty-chunklet? c)
+                        (emit-wasm-chunk-footer o)
+                        (bytevector-u32-set! bv (chunklet-start-i c) (make-wasm-chunk-instr index) (constant fasl-endianness)))
+                      (loop (cdr chunklets) (if (empty-chunklet? c) index (fx+ index 1))))])))
+             )))
 
 ;; (OC: Find all branch targets and headers within the code object)
 (define (gather-targets bv len)
@@ -738,8 +733,8 @@
             (fx>= i (car relocs)))
        ($oops 'pbchunk "landed at a relocation")]
       [else
-       ;; if the instruction always has to trampoline back, then the instruction
-       ;; after can start a chunk to resume
+       ;; (OC: if the instruction always has to trampoline back, then the instruction
+       ;;   after can start a chunk to resume)
        (let ([instr (bytevector-s32-ref bv i (constant fasl-endianness))])
          (define (check-flag)
            (unless flag-ready?
@@ -817,7 +812,6 @@
 (define (code-rel base cur-i)
   (fx- cur-i base))
 
-;; just show decoded instructions from `i` until `start-i`, then
 ;; generate a chunk function from `start-i` to `end-i`
 (define (compile-chunklet o bv i base-i relocs headers labels start-i end-i chunklets fallthrough?)
   (define (in-chunk? target)
@@ -829,9 +823,13 @@
   (define (emit-return generated next-instr)
     (append generated 
       `((return (i32.add (local.get $ip) (i32.const ,(code-rel base-i next-instr)))))))
-  
+
+  ; the main code generation loop. 
+  ; iterates through the instructions in a chunklet (PB basic block)
+  ; and translates each instruction to wasm
   (let loop ([i i] [relocs relocs] [headers headers] [labels labels] [generated (list)])
     (cond
+      ; RP header case
       [(and (pair? headers)
             (fx= i (caar headers)))
         (let ([size (cdar headers)])
@@ -843,6 +841,7 @@
                   (emit-return generated (fx+ i size))
                   ($oops 'emit-chunk "should have ended at header ~a/~a" i end-i))]
             [else
+                ;; emit a comment stating that there is data present
                 (fprintf o ";; data: ~a bytes\n" size)
                 (let ([next-i (fx+ i size)])
                   (loop next-i
@@ -850,28 +849,27 @@
                         (cdr headers)
                         labels
                         generated))]))]
+      ; end of chunk; emit a fallthrough `return` instruction
       [(fx= i end-i)
         (emit-return generated i)]
-      [(and (pair? labels)
-            (fx= i (label-to (car labels))))
-       (when (fx>= i start-i)
-         (let ([a (car labels)])
-           (when (ormap in-chunk? (label-all-from a))
-             (fprintf o "label_~x:\n" i))))
-       (loop i relocs headers (cdr labels) generated)]
       [else
+        ; read current instrs
        (let ([instr (bytevector-s32-ref bv i (constant fasl-endianness))]
              [uinstr (bytevector-u32-ref bv i (constant fasl-endianness))])
        
          (define (unimplemented instr) 
           ($oops 'emit-chunk "instruction opcode ~a is unimplemented" instr))
 
+        ; recurses to next instruction with current generated fragment
          (define (next generated)
            (loop (fx+ i instr-bytes) relocs headers labels generated))
 
          (define (done generated)
            (next generated))
 
+        ; appends the output of (emit) to generated, along with a comment
+        ; describing the general form of the instruction,
+        ; and recurses
         (define (dr-form _op emit)
           (next (append generated
             `((comment . ,(format ";;~a: r~a <- r~a" 
@@ -921,7 +919,7 @@
           (define (di/b-form _op emit)
             (next (append 
                     generated
-                    `((comment . ,(format ";;~a: b r~a, ~a" i (instr-di-dest instr) (instr-di-imm instr))))            
+                    `((comment . ,(format ";;~a: b* r~a, ~a" i (instr-di-dest instr) (instr-di-imm instr))))            
                     (emit))))
 
         (define (emit-skipped)
@@ -939,7 +937,7 @@
                                i-bits->d-bits d-bits->i-bits i-i-bits->d-bits
                                d-lo-bits->i-bits d-hi-bits->i-bits
                                binop)
-              ; mov16
+              ; mov16, zero bits
                [(_ op di/u mov16/z shift) 
                   #`(di-form 'op 
                     (lambda ()
@@ -952,6 +950,8 @@
                           [(shift2) 2]
                           [(shift3) 3])
                         '$ms)))]
+              
+              ; mov16, keep bits
                [(_ op di/u mov16/k shift) 
                   #`(di-form 'op
                       (lambda ()
@@ -965,7 +965,7 @@
                             [(shift3) 3])
                           '$ms)))]
 
-              ; mov
+              ; mov variants
                [(_ op dr mov i->i) 
                 #'(di-form 'op
                     (lambda ()
@@ -990,6 +990,8 @@
                         (instr-dr-reg instr)
                           '$ms)))]
 
+              ; these mov variants are much rarer,
+              ; and the cases have not yet been filled in
                [(_ op dr mov d->i) #'(unimplemented 'op)]
                [(_ op dr mov s->d) #'(unimplemented 'op)]
                [(_ op dr mov d->s) #'(unimplemented 'op)]
@@ -1000,7 +1002,7 @@
                [(_ op dr mov d-lo-bits->i-bits) #'(unimplemented 'op)]
                [(_ op dr mov d-hi-bits->i-bits) #'(unimplemented 'op)]
 
-               ; cmp
+               ; cmp register
                [(_ op dr/f cmp-op) #'(dr-form 'op 
                                     (lambda () 
                                       (emit-pb-cmp-op-pb-register 
@@ -1010,6 +1012,17 @@
                                         'cmp-op
                                         '$flag)))]
                 
+               ; cmp immediate
+               [(_ op di/f cmp-op) #'(di-form 'op
+                                        (lambda ()
+                                          (emit-pb-cmp-op-pb-immediate
+                                            (instr-di-dest instr)
+                                            (instr-di-imm instr)
+                                            '$ms
+                                            'cmp-op
+                                            '$flag)))]
+
+                ; fp-cmp 
                 [(_ op fp-dr/f fp-cmp-op) 
                   #'(dr-form 'op 
                         (lambda () 
@@ -1020,14 +1033,7 @@
                             '$flag
                             'fp-cmp-op)))]
 
-                [(_ op di/f cmp-op) #'(di-form 'op
-                                        (lambda ()
-                                          (emit-pb-cmp-op-pb-immediate
-                                            (instr-di-dest instr)
-                                            (instr-di-imm instr)
-                                            '$ms
-                                            'cmp-op
-                                            '$flag)))]
+
                 
                 ; bin ops
                [(_ op drr binop b-op) 
@@ -1134,7 +1140,8 @@
                         'src-type
                         8)))]
 
-                ; rev
+                ; rev (reverse bytes). Currently unimplemented
+                ; since instruction rarely used
                 [(_ op dr rev type) #'(unimplemented 'op)]
                         
                 ; b register
@@ -1145,7 +1152,7 @@
                             (code-rel base-i (fx+ i instr-bytes))
                             '$ms
                             test)))]
-
+               ; b immediate
                [(_ op i/b test) 
                   #'(i/b-form 'op (lambda ()
                       (let* ([delta (instr-i-imm instr)]
@@ -1156,17 +1163,20 @@
                             (code-rel base-i next-instr)
                             '$ms
                             test))))]
-                  
+               ; b* register rarely used
                [(_ op dr/b) #`(unimplemented 'op)]
-               [(_ op di/b) #'(unimplemented 'op)
-                #'(di/b-form 'op
-                  (lambda ()
-                    (emit-pb-b*-pb-immediate
-                      (instr-di-dest instr)
-                      (instr-di-imm instr)
-                      '$ms)))]
+               [(_ op di/b) 
+                  #'(di/b-form 'op
+                      (lambda ()
+                        (emit-pb-b*-pb-immediate
+                          (instr-di-dest instr)
+                          (instr-di-imm instr)
+                          '$ms)))]
+              ; these are unimplemented instructions,
+              ; and shouldn't even be included in PB chunks
                [(_ op n) #`(unimplemented 'op)]
                [(_ op n/x) #`(unimplemented 'op)]
+
                [(_ op adr) #'(next (append generated 
                              `((comment . ,(format ";; adr r~a" (instr-adr-dest instr))))
                               (emit-pb-adr 
@@ -1192,7 +1202,11 @@
                [(_ op props ...) #`(unimplemented 'op)]))
               
               (if (< i start-i)
+                ; if our index is before the start of a chunk, emit
+                ; a comment indicating that we've skipped over an instruction
                 (emit-skipped)
+
+                ; otherwise, dispatch the instruction to the appropriate case
                 (instruction-cases instr emit)))])))
 
 (define (extract-name name)

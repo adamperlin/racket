@@ -131,6 +131,10 @@
 ;             (unless (file-exists? f)
 ;               (error who "file not found: ~s" f)))
 ;           '(srcfile))
+
+(when (not (file-exists? dest))
+  (mkdir dest))
+  
 (for-each (lambda (f)
             (delete-file (string-append dest "/" f)))
           (directory-list dest))
