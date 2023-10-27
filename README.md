@@ -1,7 +1,9 @@
-Wasm-PBChunk Specific
-----------
-This is my fork of Racket which contains the code for experiments with wasm-pbchunk in Chez Scheme. 
-The README for getting started with wasm-pbchunk is under `racket/racket/src/ChezScheme/wasm_pbchunk_build_instructions.md`
+Racket with Wasm-PBChunk
+------------------------
+This is a fork of Racket which contains the code for experiments with Wasm-PBChunk under Chez Scheme. 
+The README for getting started with Wasm-PBChunk is at `racket/racket/src/ChezScheme/wasm_pbchunk_build_instructions.md`.
+
+To the extent that it is permitted, I have licensed this fork of Racket under the [CRAPL license](https://matt.might.net/articles/crapl/CRAPL-LICENSE.txt).
 
 Main Racket README
 ------------------
