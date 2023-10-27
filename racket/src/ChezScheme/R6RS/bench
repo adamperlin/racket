@@ -172,10 +172,8 @@ evaluate ()
     echo
     echo Testing $1 under ${NAME}
     if [[ $NAME =~ wasm* ]]; then
-      echo "make-src-code WASM"
       make_src_code_wasm $1
     else
-      echo "make-src-code"
       make_src_code $1
     fi
     echo Compiling...
@@ -207,17 +205,17 @@ wasm_pbchunk_comp()
   BOOT_NAME=${1%.*}.boot
   BENCH_NAME=$(basename ${1%.*})
   echo "(compile-file \"$1\") (make-boot-file \"$BOOT_NAME\" (list \"petite\") \"${1%.*}.so\")"\
-| scheme
+| scheme > /dev/null
 
   (
     cd ..
     echo "chunking $BOOT_NAME"
     scheme --script s/wasm-bootpbchunk.ss --dest pbchunk-out --arch pb64l --extra-boot $BOOT_NAME \
-      --exclude-funcs main run run-r6rs-benchmark hide  # add any other commonly used benchmark utilities that should not be chunked
+      --exclude-funcs main run run-r6rs-benchmark hide > /dev/null # add any other commonly used benchmark utilities that should not be chunked
     echo "re-compiling kernel with boot file $BOOT_NAME"
-    ./configure --emscripten --pbarch --nothreads --emboot=pbchunk-out/$(basename $BOOT_NAME)
-    make
-    /Users/adamperlin/Dev/emsdk/upstream/bin/wasm-opt \
+    ./configure --emscripten --pbarch --nothreads --emboot=pbchunk-out/$(basename $BOOT_NAME) > /dev/null
+    make > /dev/null
+    wasm-opt \
     --post-emscripten -O2 --low-memory-unused --zero-filled-memory --pass-arg=directize-initial-contents-immutable \
     --strip-producers em-pb64l/bin/pb64l/scheme.wasm -o em-pb64l/bin/pb64l/scheme.wasm --mvp-features --enable-mutable-globals --enable-sign-ext \
     --enable-reference-types
@@ -246,12 +244,12 @@ wasm_comp()
   echo "$WASM_OPT"
   BOOT_NAME=${1%.*}.boot
   echo "(compile-file \"$1\") (make-boot-file \"$BOOT_NAME\" (list \"petite\") \"${1%.*}.so\")"\
-| scheme
+| scheme > /dev/null
 
   (
     cd ..
-    ./configure --emscripten --pbarch --nothreads --emboot=$BOOT_NAME
-    make
+    ./configure --emscripten --pbarch --nothreads --emboot=$BOOT_NAME > /dev/null
+    make > /dev/null
     # /Users/adamperlin/Dev/emsdk/upstream/bin/wasm-opt \
     # --post-emscripten -O2  --zero-filled-memory --pass-arg=directize-initial-contents-immutable \
     # --strip-producers em-pb64l/bin/pb64l/scheme.wasm -o em-pb64l/bin/pb64l/scheme.wasm --mvp-features --enable-mutable-globals --enable-sign-ext \
@@ -263,7 +261,7 @@ wasm_exec()
 {
   (
     cd ../em-pb64l/bin/pb64l
-    time node --max-old-space-size=8192 scheme.js < "$2"
+    time node scheme.js < "$2"
   )
 }
 
@@ -431,12 +429,10 @@ while [ $# -gt 2 ] ; do
    esac
 done
 
-echo "$#"
+
 if [ "$#" -ne 2 ]; then
   error '>>> Last two arguments must be <system> and <benchmark>'
 fi
-
-echo "wopt: $WASM_OPT"
 
 case "$1" in
                all) systems="$ALL_SYSTEMS" ;;
@@ -596,8 +592,12 @@ for system in $systems ; do
       echo '****************************'
       echo Benchmarking ${NAME} on `date` under `uname -a`
    } >> results.${NAME}
+  
+  if [ ! -d "$TEMP" ]; then
+     mkdir "${TEMP}"
+  fi
 
-   mkdir "${TEMP}"
+   #mkdir "${TEMP}"
 
    for program in $benchmarks ; do
       evaluate $program
