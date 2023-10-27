@@ -16,8 +16,6 @@
     (mutable only-funcs)
     (mutable exclude-funcs)))
   
-
-  
 (define (parse-args args arg-state)
   (cond 
     [(null? args) arg-state]
@@ -43,7 +41,7 @@
     [(equal? (car args) "--only-funcs")
       (flags-only-funcs-set! arg-state (cdr args))]))
 
-(define arg-state (make-flags #f "" "" "" '() '()))
+(define arg-state (make-flags #f "pbchunk-out" "pb64l" "" '() '()))
 (parse-args args arg-state)
 
 (define petite? (flags-petite? arg-state))
@@ -64,6 +62,9 @@
 (printf "dest-dir: ~a\n" dest)
 (printf "arch: ~a\n" arch)
 (printf "funcs: ~a" only-funcs)
+
+(when (not (file-exists? dest))
+  (mkdir dest))
 
 ; (when (null? args)
 ;   (error who "missing srcdir"))

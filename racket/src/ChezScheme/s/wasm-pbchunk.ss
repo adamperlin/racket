@@ -812,7 +812,7 @@
 (define (code-rel base cur-i)
   (fx- cur-i base))
 
-;; generate a chunk function from `start-i` to `end-i`
+;; (OC: generate a chunk function from `start-i` to `end-i`)
 (define (compile-chunklet o bv i base-i relocs headers labels start-i end-i chunklets fallthrough?)
   (define (in-chunk? target)
     (ormap (lambda (c)
@@ -1094,7 +1094,7 @@
                                             '$ms
                                             'fp-un-op)))]
               
-               ; ld
+               ; ld instructions
                [(_ op dri ld src-type) 
                 #'(dri-form 'op
                     (lambda ()
@@ -1117,7 +1117,7 @@
                           'src-type
                           8)))]
 
-                ; st
+                ;; st instructions
                 [(_ op dri st src-type) 
                   #'(dri-form 'op 
                     (lambda ()
