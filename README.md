@@ -1,3 +1,11 @@
+Wasm-PBChunk Specific
+----------
+This is my fork of Racket which contains the code for experiments with wasm-pbchunk in Chez Scheme. 
+The README for getting started with wasm-pbchunk is under `racket/racket/src/ChezScheme/wasm_pbchunk_build_instructions.md`
+
+Main Racket README
+------------------
+
 [Racket](https://racket-lang.org/) is a general-purpose programming
 language and an ecosystem for language-oriented programming.
 
