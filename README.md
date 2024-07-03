@@ -5,7 +5,7 @@ The README for getting started with Wasm-PBChunk is at `racket/src/ChezScheme/wa
 
 To the extent that it is permitted, I have licensed this fork of Racket under the [CRAPL license](https://matt.might.net/articles/crapl/CRAPL-LICENSE.txt).
 
-See the associated thesis [here] (https://digitalcommons.calpoly.edu/theses/2804/).
+See the associated thesis [here](https://digitalcommons.calpoly.edu/theses/2804).
 
 Main Racket README
 ------------------
